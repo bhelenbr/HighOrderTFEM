@@ -75,3 +75,4 @@ _deps
 
 bin/
 .vscode/
+logs/
