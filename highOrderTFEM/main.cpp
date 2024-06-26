@@ -21,21 +21,27 @@ int main(int argc, char *argv[]){
                   << " " << host_mesh.region_count()
                   << std::endl;
 
+        TFEM::SolutionWriter writer("out/slices.json", host_mesh);
         TFEM::Solver solver(device_mesh, 1E-2, 1E-2);
+
         auto point_weight_mirror = Kokkos::create_mirror_view(solver.current_point_weights);
         Kokkos::deep_copy(point_weight_mirror, solver.current_point_weights);
-        std::cout << "Initial point 0 weight: " << point_weight_mirror(0) << std::endl;
+        writer.add_slice(point_weight_mirror);
 
         auto timer = Kokkos::Timer();
         double start_time = timer.seconds();
 
-        solver.simulate_steps(10000);
+        for(int i = 0; i < 10; i++){
+            solver.simulate_steps(1000);
+            Kokkos::deep_copy(point_weight_mirror, solver.current_point_weights);
+            writer.add_slice(point_weight_mirror);
+        }
 
         double stop_time = timer.seconds();
         
         Kokkos::deep_copy(point_weight_mirror, solver.current_point_weights);
+        
         std::cout << "Final point 0 weight: " << point_weight_mirror(0) << std::endl;
-
         std::cout << "10000 step time (s): " << (stop_time - start_time);
     }
     Kokkos::finalize();

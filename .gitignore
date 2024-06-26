@@ -76,3 +76,5 @@ _deps
 bin/
 .vscode/
 logs/
+out/
+viz_out/

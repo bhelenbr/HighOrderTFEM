@@ -33,7 +33,7 @@ void Solver::setup_initial(){
         Point p = mesh.points(i);
         double x = p[0];
         double y = p[1];
-        double weight = 1 + (1 - x * x) * (1 - y * y) * cos(10 * (x + y));
+        double weight = (1 - x * x) * (1 - y * y) * cos(10 * (x + y));
         current_point_weights(i) = weight;
     });
 }
@@ -84,5 +84,6 @@ void Solver::simulate_steps(int n_steps){
             Kokkos::atomic_add(&current_point_weights(e[0]), contribution_to_1);
             Kokkos::atomic_add(&current_point_weights(e[1]), contribution_to_2);
         });
+        Kokkos::fence();
     }
 }
