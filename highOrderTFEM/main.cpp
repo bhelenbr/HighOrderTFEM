@@ -26,17 +26,17 @@ int main(int argc, char *argv[]){
 
         TFEM::pointID last_point = host_mesh.point_count()-1;
         std::cout << "Mesh point " << last_point << " coords: "
-                  << host_mesh.points(last_point).x << " "
-                  << host_mesh.points(last_point).y << std::endl;
+                  << host_mesh.points(last_point)[0] << " "
+                  << host_mesh.points(last_point)[1] << std::endl;
         int last_edge = host_mesh.edge_count() - 1;
         std::cout << "Edge " << last_edge << " point ids: " 
-                  << host_mesh.edges(last_edge).p1 << " "
-                  << host_mesh.edges(last_edge).p2 << std::endl;
+                  << host_mesh.edges(last_edge)[0] << " "
+                  << host_mesh.edges(last_edge)[1] << std::endl;
         int last_region = host_mesh.region_count() - 1;
         std::cout << "Triangle " << last_region << " point ids: " 
-            << host_mesh.regions(last_region).p1 << " "
-            << host_mesh.regions(last_region).p2 << " "
-            << host_mesh.regions(last_region).p3 << std::endl;
+            << host_mesh.regions(last_region)[0] << " "
+            << host_mesh.regions(last_region)[1] << " "
+            << host_mesh.regions(last_region)[2] << std::endl;
     }
     Kokkos::finalize();
 }

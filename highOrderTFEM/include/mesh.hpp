@@ -11,17 +11,30 @@ namespace TFEM {
     typedef uint16_t pointID;
 
     struct Point{
-        double x;
-        double y;
+        private:
+            double coords[2];
+        public:
+            inline double& operator [](int i){
+                return coords[i];
+            }
     };
+
     struct Edge{
-        pointID p1;
-        pointID p2;
+        private:
+            pointID points[2];
+        public:
+            inline pointID& operator [](int i){
+                return points[i];
+            }
     };
+
     struct Region{
-        pointID p1;
-        pointID p2;
-        pointID p3;
+        private:
+            pointID points[3];
+        public:
+            inline pointID& operator [](int i){
+                return points[i];
+            }
     };
 
 

@@ -54,8 +54,8 @@ void TFEM::load_meshes_from_grd_file(string fname, DeviceMesh &device_mesh, Devi
         line_stream >> string_buff;
 
         // Read point
-        line_stream >> host_mesh.points(p_id).x;
-        line_stream >> host_mesh.points(p_id).y;
+        line_stream >> host_mesh.points(p_id)[0];
+        line_stream >> host_mesh.points(p_id)[1];
     }
     // edge ID's
     for(int e_id = 0; e_id < n_edges; e_id++){
@@ -70,7 +70,7 @@ void TFEM::load_meshes_from_grd_file(string fname, DeviceMesh &device_mesh, Devi
         }
         // flush out the ":"
         line_stream >> string_buff;
-        line_stream >> host_mesh.edges(e_id).p1 >> host_mesh.edges(e_id).p2; 
+        line_stream >> host_mesh.edges(e_id)[0] >> host_mesh.edges(e_id)[1]; 
     }
     // region ID's
     for(int r_id = 0; r_id < n_regions; r_id++){
@@ -85,9 +85,9 @@ void TFEM::load_meshes_from_grd_file(string fname, DeviceMesh &device_mesh, Devi
         }
         // flush out the ":"
         line_stream >> string_buff;
-        line_stream >> host_mesh.regions(r_id).p1
-                    >> host_mesh.regions(r_id).p2
-                    >> host_mesh.regions(r_id).p3; 
+        line_stream >> host_mesh.regions(r_id)[0]
+                    >> host_mesh.regions(r_id)[1]
+                    >> host_mesh.regions(r_id)[2]; 
     }
     // copy over to device
     host_mesh.deep_copy_all_to(device_mesh);
