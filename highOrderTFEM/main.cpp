@@ -2,6 +2,7 @@
 
 #include <Kokkos_Core.hpp>
 #include <mesh.hpp>
+#include <fem.hpp>
 
 int main(int argc, char *argv[]){
     Kokkos::initialize(argc, argv);
@@ -15,28 +16,27 @@ int main(int argc, char *argv[]){
         TFEM::DeviceMesh::HostMirrorMesh host_mesh;
         TFEM::load_meshes_from_grd_file(argv[1], device_mesh, host_mesh);
 
-        std::cout << "Host mesh size: " << host_mesh.point_count() 
+        std::cout << "Mesh size: " << host_mesh.point_count() 
                   << " " << host_mesh.edge_count() 
                   << " " << host_mesh.region_count()
                   << std::endl;
-        std::cout << "Device mesh size: " << device_mesh.point_count() 
-                  << " " << device_mesh.edge_count() 
-                  << " " << device_mesh.region_count()
-                  << std::endl;
 
-        TFEM::pointID last_point = host_mesh.point_count()-1;
-        std::cout << "Mesh point " << last_point << " coords: "
-                  << host_mesh.points(last_point)[0] << " "
-                  << host_mesh.points(last_point)[1] << std::endl;
-        int last_edge = host_mesh.edge_count() - 1;
-        std::cout << "Edge " << last_edge << " point ids: " 
-                  << host_mesh.edges(last_edge)[0] << " "
-                  << host_mesh.edges(last_edge)[1] << std::endl;
-        int last_region = host_mesh.region_count() - 1;
-        std::cout << "Triangle " << last_region << " point ids: " 
-            << host_mesh.regions(last_region)[0] << " "
-            << host_mesh.regions(last_region)[1] << " "
-            << host_mesh.regions(last_region)[2] << std::endl;
+        TFEM::Solver solver(device_mesh, 1E-2, 1E-2);
+        auto point_weight_mirror = Kokkos::create_mirror_view(solver.current_point_weights);
+        Kokkos::deep_copy(point_weight_mirror, solver.current_point_weights);
+        std::cout << "Initial point 0 weight: " << point_weight_mirror(0) << std::endl;
+
+        auto timer = Kokkos::Timer();
+        double start_time = timer.seconds();
+
+        solver.simulate_steps(10000);
+
+        double stop_time = timer.seconds();
+        
+        Kokkos::deep_copy(point_weight_mirror, solver.current_point_weights);
+        std::cout << "Final point 0 weight: " << point_weight_mirror(0) << std::endl;
+
+        std::cout << "10000 step time (s): " << (stop_time - start_time);
     }
     Kokkos::finalize();
 }

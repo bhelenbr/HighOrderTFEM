@@ -10,6 +10,9 @@ Solver::Solver(DeviceMesh mesh, double timestep, double k):
     current_point_weights = Kokkos::View<double*>("Current Point Weights", mesh.point_count());
     prev_point_weights = Kokkos::View<double*>("Prev Point Weights", mesh.point_count());
     point_mass_inv = Kokkos::View<double*>("Inverse Point Masses", mesh.point_count());
+
+    setup_mass_matrix();
+    setup_initial();
 }
 
 void Solver::setup_mass_matrix(){
@@ -31,7 +34,7 @@ void Solver::setup_initial(){
         Point p = mesh.points(i);
         double x = p[0];
         double y = p[1];
-        double weight = (1 - x * x) * (1 - y * y) * cos(10 * (x + y));
+        double weight = 1 + (1 - x * x) * (1 - y * y) * cos(10 * (x + y));
         current_point_weights(i) = weight;
     });
 }

@@ -18,10 +18,6 @@ namespace TFEM {
             // each time.
             Kokkos::View<double*> point_mass_inv;
 
-            /**
-             * TODO: right now this is a dummy
-            */
-            void setup_mass_matrix();
 
         public:
             Kokkos::View<double*> current_point_weights;
@@ -29,10 +25,17 @@ namespace TFEM {
 
             Solver(DeviceMesh mesh, double timestep, double k);
 
+            void simulate_steps(int n_steps);
+
+            // I am for some strange lambda-compilation-related reason forced to
+            // make these public, but they are already called inside the constructor:
+            // no need to call explicitly.
+             /**
+             * TODO: right now this is a dummy
+            */
+            void setup_mass_matrix();
             // This is a dummy until we can figure out initial conditions
             void setup_initial();
-
-            void simulate_steps(int n_steps);
     };
 }
 
