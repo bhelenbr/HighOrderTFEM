@@ -11,8 +11,8 @@ int main(int argc, char *argv[]){
 
         // Verify that we can read a mesh properly. Assume the file path is located as 
         // the first arg (after program name)
-        TFEM::HostMesh host_mesh;
         TFEM::DeviceMesh device_mesh;
+        TFEM::DeviceMesh::HostMirrorMesh host_mesh;
         TFEM::load_meshes_from_grd_file(argv[1], device_mesh, host_mesh);
 
         std::cout << "Host mesh size: " << host_mesh.point_count() 
@@ -26,17 +26,17 @@ int main(int argc, char *argv[]){
 
         TFEM::pointID last_point = host_mesh.point_count()-1;
         std::cout << "Mesh point " << last_point << " coords: "
-                  << host_mesh.point_coords(last_point, 0) << " "
-                  << host_mesh.point_coords(last_point, 1) << std::endl;
+                  << host_mesh.points(last_point).x << " "
+                  << host_mesh.points(last_point).y << std::endl;
         int last_edge = host_mesh.edge_count() - 1;
         std::cout << "Edge " << last_edge << " point ids: " 
-                  << host_mesh.edge_to_point_ids(last_edge, 0) << " "
-                  << host_mesh.edge_to_point_ids(last_edge, 1) << std::endl;
+                  << host_mesh.edges(last_edge).p1 << " "
+                  << host_mesh.edges(last_edge).p2 << std::endl;
         int last_region = host_mesh.region_count() - 1;
         std::cout << "Triangle " << last_region << " point ids: " 
-            << host_mesh.region_to_point_ids(last_region, 0) << " "
-            << host_mesh.region_to_point_ids(last_region, 1) << " "
-            << host_mesh.region_to_point_ids(last_region, 2) << std::endl;
+            << host_mesh.regions(last_region).p1 << " "
+            << host_mesh.regions(last_region).p2 << " "
+            << host_mesh.regions(last_region).p3 << std::endl;
     }
     Kokkos::finalize();
 }

@@ -6,7 +6,7 @@
 using namespace TFEM;
 using namespace std;
 
-void TFEM::load_meshes_from_grd_file(string fname, DeviceMesh &device_mesh, HostMesh &host_mesh)
+void TFEM::load_meshes_from_grd_file(string fname, DeviceMesh &device_mesh, DeviceMesh::HostMirrorMesh &host_mesh)
 {
     ifstream input_file(fname);
     stringstream line_stream;
@@ -52,8 +52,10 @@ void TFEM::load_meshes_from_grd_file(string fname, DeviceMesh &device_mesh, Host
         }
         // flush out the ":"
         line_stream >> string_buff;
-        line_stream >> host_mesh.point_coords(p_id, 0);
-        line_stream >> host_mesh.point_coords(p_id, 2);
+
+        // Read point
+        line_stream >> host_mesh.points(p_id).x;
+        line_stream >> host_mesh.points(p_id).y;
     }
     // edge ID's
     for(int e_id = 0; e_id < n_edges; e_id++){
@@ -68,7 +70,7 @@ void TFEM::load_meshes_from_grd_file(string fname, DeviceMesh &device_mesh, Host
         }
         // flush out the ":"
         line_stream >> string_buff;
-        line_stream >> host_mesh.edge_to_point_ids(e_id, 0) >> host_mesh.edge_to_point_ids(e_id, 1); 
+        line_stream >> host_mesh.edges(e_id).p1 >> host_mesh.edges(e_id).p2; 
     }
     // region ID's
     for(int r_id = 0; r_id < n_regions; r_id++){
@@ -83,9 +85,9 @@ void TFEM::load_meshes_from_grd_file(string fname, DeviceMesh &device_mesh, Host
         }
         // flush out the ":"
         line_stream >> string_buff;
-        line_stream >> host_mesh.region_to_point_ids(r_id, 0)
-                    >> host_mesh.region_to_point_ids(r_id, 1)
-                    >> host_mesh.region_to_point_ids(r_id, 2); 
+        line_stream >> host_mesh.regions(r_id).p1
+                    >> host_mesh.regions(r_id).p2
+                    >> host_mesh.regions(r_id).p3; 
     }
     // copy over to device
     host_mesh.deep_copy_all_to(device_mesh);
