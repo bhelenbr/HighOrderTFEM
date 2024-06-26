@@ -16,12 +16,12 @@ namespace TFEM {
             // For the diagonal psuedomass matrix, this stores the 
             // inverse of the diagonal entries- saving a division 
             // each time.
-            Kokkos::View<double*> point_mass_inv;
+            Kokkos::View<double*, Kokkos::MemoryTraits<Kokkos::RandomAccess>> point_mass_inv;
 
 
         public:
-            Kokkos::View<double*> current_point_weights;
-            Kokkos::View<double*> prev_point_weights;
+            Kokkos::View<double*, Kokkos::MemoryTraits<Kokkos::RandomAccess>> current_point_weights;
+            Kokkos::View<double*, Kokkos::MemoryTraits<Kokkos::RandomAccess>> prev_point_weights;
 
             Solver(DeviceMesh mesh, double timestep, double k);
 

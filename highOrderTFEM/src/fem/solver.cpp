@@ -5,12 +5,11 @@
 using namespace TFEM;
 
 Solver::Solver(DeviceMesh mesh, double timestep, double k):
-    mesh(mesh), dt(timestep), n_total_steps(0), k(k)
+    mesh(mesh), dt(timestep), n_total_steps(0), k(k),
+    current_point_weights("Current Point Weights", mesh.point_count()),
+    prev_point_weights("Prev Point Weights", mesh.point_count()),
+    point_mass_inv("Inverse Point Masses", mesh.point_count())
 {
-    current_point_weights = Kokkos::View<double*>("Current Point Weights", mesh.point_count());
-    prev_point_weights = Kokkos::View<double*>("Prev Point Weights", mesh.point_count());
-    point_mass_inv = Kokkos::View<double*>("Inverse Point Masses", mesh.point_count());
-
     setup_mass_matrix();
     setup_initial();
 }
