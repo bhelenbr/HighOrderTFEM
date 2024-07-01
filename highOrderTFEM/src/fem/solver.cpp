@@ -71,8 +71,7 @@ void Solver::simulate_steps(int n_steps){
         auto k = this->k;
         auto dt = this->dt;
 
-        // Now iterate over edges to add the contributions to each
-        // neighboring point
+        // Now iterate over edges to add the contributions to each neighboring point
         Kokkos::parallel_for(mesh.edge_count(), KOKKOS_LAMBDA(int i){
             Edge e = mesh.edges(i);
 
@@ -86,7 +85,16 @@ void Solver::simulate_steps(int n_steps){
             Kokkos::atomic_add(&current_point_weights(e[0]), contribution_to_1);
             Kokkos::atomic_add(&current_point_weights(e[1]), contribution_to_2);
         });
-        // TODO: Took care of matrix off-diagonals, now what about diagonals?
+        // Make sure to account for contributions to self (matrix diagonals).
+        // The I is taken care of in the deep copy, so we only need (M^-1 A) diagonals.
+        Kokkos::parallel_for(mesh.point_count(), KOKKOS_LAMBDA(pointID i){
+            // TODO: matrix values! figure these out
+            double A_diag = 1.0;
+
+            double contribution = -k * dt * point_mass_inv_readonly(i) * A_diag * prev_points_readonly(i);
+
+            Kokkos::atomic_add(&current_point_weights(i), contribution);
+        });
         Kokkos::fence();
     }
 }
