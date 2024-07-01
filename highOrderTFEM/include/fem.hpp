@@ -6,6 +6,7 @@
 
 #include <Kokkos_Core.hpp>
 #include "mesh.hpp"
+#include "type_magic.hpp"
 
 namespace TFEM {
 
@@ -20,11 +21,13 @@ namespace TFEM {
             // inverse of the diagonal entries- saving a division 
             // each time.
             Kokkos::View<double*, Kokkos::MemoryTraits<Kokkos::RandomAccess>> point_mass_inv;
-
+            constify_view_t<decltype(point_mass_inv)> point_mass_inv_readonly; 
 
         public:
             Kokkos::View<double*, Kokkos::MemoryTraits<Kokkos::RandomAccess>> current_point_weights;
             Kokkos::View<double*, Kokkos::MemoryTraits<Kokkos::RandomAccess>> prev_point_weights;
+            constify_view_t<decltype(point_mass_inv)> prev_point_weights_readonly;
+
 
             Solver(DeviceMesh mesh, double timestep, double k);
 
