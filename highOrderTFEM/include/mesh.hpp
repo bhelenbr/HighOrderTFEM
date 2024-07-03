@@ -1,6 +1,9 @@
 /**
  * Triangular mesh datastructure, including file IO and copying to/from device.
 */
+#ifndef highOrderTFEM_mesh_hpp
+#define highOrderTFEM_mesh_hpp
+
 #include <Kokkos_Core.hpp>
 #include <string>
 #include <type_traits>
@@ -164,3 +167,5 @@ namespace TFEM {
     */
     void load_meshes_from_grd_file(std::string fname, DeviceMesh& device_mesh, DeviceMesh::HostMirrorMesh& host_mesh);
 }
+
+#endif
