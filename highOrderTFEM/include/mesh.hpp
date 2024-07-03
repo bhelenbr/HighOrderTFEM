@@ -11,7 +11,7 @@
 
 namespace TFEM {
 
-    typedef uint16_t pointID;
+    typedef int pointID;
 
     struct Point{
         private:
@@ -166,6 +166,27 @@ namespace TFEM {
      *  (Anything in <> is replaced with its value- the file does not include angle brackets)  
     */
     void load_meshes_from_grd_file(std::string fname, DeviceMesh& device_mesh, DeviceMesh::HostMirrorMesh& host_mesh);
+
+
+    // An indexer for mesh coloring
+    // TODO genericize view type / templates
+    class MeshColorMap{
+        protected:
+           Kokkos::View<int*> color_index;
+           Kokkos::View<int*>::HostMirror color_index_host;
+           Kokkos::View<Region*> color_members;
+        public:
+            MeshColorMap(DeviceMesh &mesh);
+
+           // When I put kokkos parallel for loops in the constructor,
+           // the compiler yells at me that the enclosing function doesn't
+           // have an adress (on GPU). This is a workaround- don't call.
+           void do_color(DeviceMesh &mesh);
+
+           auto color_view(int color){
+                return Kokkos::subview(color_members, Kokkos::pair(color_index_host[color], color_index_host[color+1]));
+           }
+    };
 }
 
 #endif
