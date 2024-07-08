@@ -4,21 +4,21 @@
 
 using namespace TFEM;
 
-Solver::Solver(DeviceMesh mesh, double timestep, double k) 
-:   mesh(mesh),
-    dt(timestep),
-    n_total_steps(0),
-    k(k),
-    current_point_weights("Current Point Weights", mesh.point_count()),
-    prev_point_weights("Prev Point Weights", mesh.point_count()),
-    point_mass_inv("Inverse Point Masses", mesh.point_count()),
-    element_coloring(mesh)
+Solver::Solver(DeviceMesh mesh, double timestep, double k)
+    : mesh(mesh),
+      dt(timestep),
+      n_total_steps(0),
+      k(k),
+      current_point_weights("Current Point Weights", mesh.point_count()),
+      prev_point_weights("Prev Point Weights", mesh.point_count()),
+      point_mass_inv("Inverse Point Masses", mesh.point_count()),
+      element_coloring(mesh)
 {
     // point the readonly buffers to the correct place.
     // mass matrix readonly set up alongisde mass matrix itself
     prev_point_weights_readonly = prev_point_weights;
     setup_mass_matrix();
-    setup_initial();
+    setup_initial_conditions();
 }
 
 void Solver::setup_mass_matrix()
@@ -30,7 +30,7 @@ void Solver::setup_mass_matrix()
 }
 
 // DUMMY
-void Solver::setup_initial()
+void Solver::setup_initial_conditions()
 {
     // make up some bogus initial conditions
 
@@ -52,6 +52,7 @@ void Solver::simulate_steps(int n_steps)
     {
         prepare_next_step();
         compute_step();
+        fix_boundary();
     }
 }
 
@@ -75,6 +76,11 @@ void Solver::compute_step()
             do_element(element); });
         Kokkos::fence();
     }
+}
+
+void Solver::fix_boundary()
+{
+    // TODO
 }
 
 SolverImpl::ElementContributionFunctor Solver::create_element_contribution_functor()
