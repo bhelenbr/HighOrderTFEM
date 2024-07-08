@@ -16,6 +16,9 @@ target_include_directories(lib PUBLIC include)
 find_package(Kokkos CONFIG REQUIRED)
 target_link_libraries(lib Kokkos::kokkos)
 
+find_package(KokkosKernels REQUIRED)
+target_link_libraries(lib Kokkos::kokkoskernels)
+
 # Make our main/demo executable
 add_executable(demo main.cpp)
 target_link_libraries(demo lib)

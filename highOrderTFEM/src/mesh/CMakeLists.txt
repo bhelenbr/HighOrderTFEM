@@ -1,1 +1,1 @@
-target_sources(lib PUBLIC ./mesh.cpp)
+target_sources(lib PUBLIC ./mesh.cpp ./mesh_color.cpp)
