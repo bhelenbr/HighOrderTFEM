@@ -5,8 +5,9 @@
 #include <fem.hpp>
 
 int main(int argc, char *argv[]){
+    assert(argc > 1); // Must provide mesh input file
     Kokkos::initialize(argc, argv);
-    {
+    {  
         std::cout << "Running with default execution space: " << Kokkos::DefaultExecutionSpace::name() << std::endl;
         std::cout << "\tDefault host execution space: " << Kokkos::DefaultHostExecutionSpace::name() << std::endl;
 

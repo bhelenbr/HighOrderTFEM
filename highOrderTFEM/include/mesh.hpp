@@ -17,7 +17,7 @@ namespace TFEM {
         private:
             double coords[2];
         public:
-            inline double& operator [](int i){
+            KOKKOS_INLINE_FUNCTION double& operator [](int i) {
                 return coords[i];
             }
     };
@@ -26,7 +26,7 @@ namespace TFEM {
         private:
             pointID points[2];
         public:
-            inline pointID& operator [](int i){
+            KOKKOS_INLINE_FUNCTION pointID& operator [](int i) {
                 return points[i];
             }
     };
@@ -35,7 +35,7 @@ namespace TFEM {
         private:
             pointID points[3];
         public:
-            inline pointID& operator [](int i){
+            KOKKOS_INLINE_FUNCTION pointID& operator [](int i) {
                 return points[i];
             }
     };
@@ -175,6 +175,7 @@ namespace TFEM {
            Kokkos::View<int*> color_index;
            Kokkos::View<int*>::HostMirror color_index_host;
            Kokkos::View<Region*> color_members;
+           int n_colors;
         public:
             MeshColorMap(DeviceMesh &mesh);
 
@@ -182,6 +183,9 @@ namespace TFEM {
            // the compiler yells at me that the enclosing function doesn't
            // have an adress (on GPU). This is a workaround- don't call.
            void do_color(DeviceMesh &mesh);
+
+           int color_count();
+           int member_count(int color);
 
            auto color_view(int color){
                 return Kokkos::subview(color_members, Kokkos::pair(color_index_host[color], color_index_host[color+1]));
