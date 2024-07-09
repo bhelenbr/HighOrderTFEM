@@ -72,6 +72,7 @@ void MeshColorMap::do_color(DeviceMesh &mesh)
     Kokkos::View<int *> color_counts("Color counts", n_colors);
     Kokkos::View<int *> color_index("Color index", n_colors + 1);
     Kokkos::View<Region *> color_members("Color members", region_to_colors.extent(0));
+    Kokkos::View<int *> color_member_ids("Color member_ids", region_to_colors.extent(0));
 
     // Step 1: count how many items are in each color.
     // Atomic add should be a fairly safe function to use for 32-bit integers.
@@ -94,14 +95,18 @@ void MeshColorMap::do_color(DeviceMesh &mesh)
     Kokkos::parallel_for(mesh.region_count(), KOKKOS_LAMBDA(int i) {
         int color = region_to_colors(i) - 1; // colors start at 1 but our array starts at 0
         int place_ind = color_index(color) + Kokkos::atomic_fetch_add(&color_counts[color], 1);
-        color_members(place_ind) = mesh.regions(i); });
+        color_members(place_ind) = mesh.regions(i);
+        color_member_ids(place_ind) = i; });
 
     // Now we should have a nice CSR-like structure for iterating over colors!
     // Just need to make the indexing available at the host:
     this->color_index = color_index;
-    this->color_members = color_members;
     this->color_index_host = Kokkos::create_mirror_view(color_index);
     Kokkos::deep_copy(this->color_index_host, color_index);
+    this->color_members = color_members;
+    this->color_ids = color_member_ids;
+    this->color_ids_host = Kokkos::create_mirror_view(color_member_ids);
+    Kokkos::deep_copy(this->color_ids_host, color_member_ids);
 }
 
 int MeshColorMap::color_count()

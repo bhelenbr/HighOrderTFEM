@@ -69,7 +69,7 @@ void Solver::compute_step()
     auto do_element = create_element_contribution_functor();
     for (int color = 0; color < element_coloring.color_count(); color++)
     {
-        auto elements = element_coloring.color_view(color);
+        auto elements = element_coloring.color_member_regions(color);
 
         Kokkos::parallel_for(elements.extent(0), KOKKOS_LAMBDA(int i) {
             Region element = elements(i);

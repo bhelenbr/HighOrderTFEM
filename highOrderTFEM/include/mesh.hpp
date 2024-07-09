@@ -210,7 +210,7 @@ namespace TFEM
     /**
      * Runs a (non-minimal) coloring algorithm on the regions in mesh so that no two elements
      * in the same color share a point. All regions of the same color can be queries as a
-     * contiguous subview using "color_view(color_index)".
+     * contiguous subview using "color_member_regions(color_index)".
      *
      * Right now regions are copied by value (to save an extra dereference) so their index is lost.
      */
@@ -219,10 +219,14 @@ namespace TFEM
     protected:
         // color index is a (n_colors + 1)-entry view where indices belonging to a
         // color are anything in [color_index(color), color_index(color + 1))
-        Kokkos::View<int *> color_index;
-        Kokkos::View<int *>::HostMirror color_index_host;
+        Kokkos::View<const int *> color_index;
+        Kokkos::View<const int *>::HostMirror color_index_host;
         // Array of regions sorted to be color-contiguous. See the index
-        Kokkos::View<Region *> color_members;
+        Kokkos::View<const Region *> color_members;
+
+        // original mesh ID's corresponding to each region
+        Kokkos::View<const int *> color_ids;
+        Kokkos::View<const int *>::HostMirror color_ids_host;
         int n_colors;
 
     public:
@@ -243,9 +247,28 @@ namespace TFEM
          */
         int member_count(int color);
 
-        auto color_view(int color)
+        /**
+         * Returns a device-accessible contiguous subview of the regions in the indicated color
+         */
+        auto color_member_regions(int color)
         {
             return Kokkos::subview(color_members, Kokkos::pair(color_index_host[color], color_index_host[color + 1]));
+        }
+
+        /**
+         * Returns a device-accessible subview containing the ID's of the regions of the indicated color
+         */
+        auto color_member_ids(int color)
+        {
+            return Kokkos::subview(color_ids, Kokkos::pair(color_index_host[color], color_index_host[color + 1]));
+        }
+
+        /**
+         * Returns a host-accessible subview containing the ID's of the regions of the indicated color
+         */
+        auto color_member_ids_host(int color)
+        {
+            return Kokkos::subview(color_ids_host, Kokkos::pair(color_index_host[color], color_index_host[color + 1]));
         }
     };
 }
