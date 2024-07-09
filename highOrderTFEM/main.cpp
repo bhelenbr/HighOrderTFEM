@@ -18,10 +18,24 @@ int main(int argc, char *argv[])
         TFEM::DeviceMesh::HostMirrorMesh host_mesh;
         TFEM::load_meshes_from_grd_file(argv[1], device_mesh, host_mesh);
 
+        assert(host_mesh.boundary_edges.is_allocated());
+
         std::cout << "Mesh size: " << host_mesh.point_count()
                   << " " << host_mesh.edge_count()
                   << " " << host_mesh.region_count()
                   << std::endl;
+
+        std::cout << "Mesh boundary segments:" << std::endl;
+        for (int seg = 0; seg < host_mesh.boundary_edges.numRows(); seg++)
+        {
+            std::cout << "\t Seg " << (seg + 1) << ": ";
+            auto segment = host_mesh.boundary_edges.rowConst(seg);
+            for (int i = 0; i < segment.length; i++)
+            {
+                std::cout << " " << segment(i);
+            }
+            std::cout << std::endl;
+        }
 
         TFEM::SolutionWriter writer("out/slices.json", host_mesh);
         TFEM::Solver solver(device_mesh, 1E-2, 1E-2);
