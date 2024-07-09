@@ -18,6 +18,10 @@ int main(int argc, char *argv[])
         TFEM::DeviceMesh::HostMirrorMesh host_mesh;
         TFEM::load_meshes_from_grd_file(argv[1], device_mesh, host_mesh);
 
+        TFEM::MeshColorMap coloring(device_mesh);
+        std::cout << "Colored into " << coloring.color_count() << " partitions" << std::endl;
+        TFEM::validate_mesh_coloring(host_mesh, coloring);
+
         assert(host_mesh.boundary_edges.is_allocated());
 
         std::cout << "Mesh size: " << host_mesh.point_count()

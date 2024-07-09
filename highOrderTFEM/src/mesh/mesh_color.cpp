@@ -118,3 +118,65 @@ int MeshColorMap::member_count(int color)
 {
     return color_index_host(color + 1) - color_index_host(color);
 }
+
+/**
+ * Runs a check and prints to the console that a coloring is a correct. A coloring is correct if
+ * every region in the mesh has exactly one color, and no regions within a single color share a point.
+ *
+ * In a more mature project this would be part of a test suite instead.
+ */
+void TFEM::validate_mesh_coloring(typename DeviceMesh::HostMirrorMesh &mesh, MeshColorMap &coloring)
+{
+    using IntArray = Kokkos::View<int *, Kokkos::DefaultHostExecutionSpace>;
+
+    // Go through all ID's and see if any have color colisions.
+    IntArray region_colors("ID occurence count", mesh.region_count());
+    Kokkos::deep_copy(region_colors, -1);
+
+    std::cout << "Validating uniqueness of coloring..." << std::endl;
+    for (int color = 0; color < coloring.color_count(); color++)
+    {
+        auto color_ids = coloring.color_member_ids_host(color);
+        for (int i = 0; i < color_ids.extent(0); i++)
+        {
+            int id = color_ids(i);
+            if (region_colors(id) > -1)
+            {
+                std::cout << "Region " << id << " already colored " << color_ids(id) << ", again colored " << color << std::endl;
+            }
+            else
+            {
+                region_colors(id) = color;
+            }
+        }
+    }
+    std::cout << "Done." << std::endl;
+
+    // Check that every point is touched no more than once per color
+    IntArray point_regions("point color validation", mesh.point_count());
+
+    std::cout << "Validating nonadjacency of same-color regions..." << std::endl;
+    for (int color = 0; color < coloring.color_count(); color++)
+    {
+        Kokkos::deep_copy(point_regions, -1);
+        auto color_ids = coloring.color_member_ids_host(color);
+        for (int i = 0; i < color_ids.extent(0); i++)
+        {
+            int id = color_ids(i);
+            Region r = mesh.regions(id);
+            for (int j = 0; j < 3; j++)
+            {
+                pointID p = r[j];
+                if (point_regions(p) > -1)
+                {
+                    std::cout << "Same-color (" << color << ") conflict between regions" << point_regions(p) << " and " << id << " at point " << p << std::endl;
+                }
+                else
+                {
+                    point_regions(p) = id;
+                }
+            }
+        }
+    }
+    std::cout << "Done" << std::endl;
+}

@@ -271,6 +271,9 @@ namespace TFEM
             return Kokkos::subview(color_ids_host, Kokkos::pair(color_index_host[color], color_index_host[color + 1]));
         }
     };
+
+    void validate_mesh_coloring(typename DeviceMesh::HostMirrorMesh &mesh, MeshColorMap &coloring);
+
 }
 
 #endif
