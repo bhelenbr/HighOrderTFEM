@@ -5,6 +5,7 @@
 #define highOrderTFEM_mesh_hpp
 
 #include <Kokkos_Core.hpp>
+#include <Kokkos_StaticCrsGraph.hpp> // for storing boundary edges
 #include <string>
 #include <type_traits>
 
@@ -68,6 +69,9 @@ namespace TFEM
         static_assert(Kokkos::is_view_v<PointView>, "PointView must be kokkos view");
         static_assert(Kokkos::is_view_v<EdgeView>, "EdgeView must be kokkos view");
         static_assert(Kokkos::is_view_v<RegionView>, "RegionView must be kokkos view");
+        using MemSpace = typename PointView::memory_space;
+        static_assert(Kokkos::SpaceAccessibility<MemSpace, typename EdgeView::memory_space>::assignable);
+        static_assert(Kokkos::SpaceAccessibility<MemSpace, typename RegionView::memory_space>::assignable);
         static_assert(std::is_same_v<typename PointView::data_type, Point *>, "PointView must be array of points");
         static_assert(std::is_same_v<typename EdgeView::data_type, Edge *>, "EdgeView must be array of edges");
         static_assert(std::is_same_v<typename RegionView::data_type, Region *>, "RegionView must be array of regions");
@@ -87,9 +91,14 @@ namespace TFEM
         int n_regions;
 
     public:
+        // Main buffers
         PointView points;
         EdgeView edges;
         RegionView regions;
+
+        // Use CSR rowmap format to store IDs of boundary edges
+        using BoundaryEdgeMap = Kokkos::StaticCrsGraph<int, typename EdgeView::execution_space>;
+        BoundaryEdgeMap boundary_edges;
 
         /**
          * Sometimes need to leave an uninitialized mesh for later initialization
@@ -99,16 +108,25 @@ namespace TFEM
         /**
          * Creates a mesh of given dimensions.
          */
-        Mesh(int n_points, int n_edges, int n_regions) : n_points(n_points), n_edges(n_edges), n_regions(n_regions),
-                                                         points("mesh_points", n_points),
-                                                         edges("mesh_edges", n_edges),
-                                                         regions("mesh_regions", n_regions)
+        Mesh(int n_points, int n_edges, int n_regions)
+            : n_points(n_points),
+              n_edges(n_edges),
+              n_regions(n_regions),
+              points("mesh_points", n_points),
+              edges("mesh_edges", n_edges),
+              regions("mesh_regions", n_regions),
+              boundary_edges()
         {
             // initializer list took care of most of it.
+            // The boundary edges are a bit awkward: they have
+            // strange initialization patterns, but are found at
+            // the end of the file, so they must be initialized
+            // specially.
         }
 
         /**
-         * Creates a copy of the mesh with all views accessible from the host.
+         * Creates a copy of the mesh with all primary views accessible from the host. Does not
+         * copy or initialize the edge boundaries, since they have some initialization weirdness.
          *
          * Does NOT perform a deep copy- do manually or call src_mesh.deep_copy_all_to(dest_mesh)
          *
