@@ -19,14 +19,15 @@ Solver::Solver(DeviceMesh mesh, double timestep, double k)
     prev_point_weights_readonly = prev_point_weights;
     setup_mass_matrix();
     setup_initial_conditions();
+    Kokkos::fence();
 }
 
 void Solver::setup_mass_matrix()
 {
     // TODO make this legit based on mesh
     // Right now give dummy scalar of all ones
-    Kokkos::deep_copy(point_mass_inv, 1.0);
     point_mass_inv_readonly = point_mass_inv;
+    Kokkos::deep_copy(point_mass_inv, 1.0);
 }
 
 // DUMMY
@@ -50,8 +51,11 @@ void Solver::simulate_steps(int n_steps)
 {
     for (int i = 0; i < n_steps; (i++, n_total_steps++))
     {
+        Kokkos::fence();
         prepare_next_step();
+        Kokkos::fence();
         compute_step();
+        Kokkos::fence();
         fix_boundary();
     }
 }
@@ -69,7 +73,7 @@ void Solver::compute_step()
     auto do_element = create_element_contribution_functor();
     for (int color = 0; color < element_coloring.color_count(); color++)
     {
-        auto elements = element_coloring.color_view(color);
+        auto elements = element_coloring.color_member_regions(color);
 
         Kokkos::parallel_for(elements.extent(0), KOKKOS_LAMBDA(int i) {
             Region element = elements(i);
@@ -96,13 +100,13 @@ KOKKOS_INLINE_FUNCTION void SolverImpl::ElementContributionFunctor::operator()(R
     for (int edge_i = 0; edge_i < 3; edge_i++)
     {
         pointID p1 = element[edge_i];
-        pointID p2 = element[(edge_i + 1 % 3)];
+        pointID p2 = element[((edge_i + 1) % 3)];
 
         double A12 = 1.0;
         double A21 = 1.0;
 
-        new_points(p1) += kdt * inv_mass(p1) * A12 * prev_points(p2);
-        new_points(p2) += kdt * inv_mass(p2) * A21 * prev_points(1);
-        // .. or something like that anyway. Not too concerned at the moment.
+        new_points(p1) += -kdt * inv_mass(p1) * A12 * prev_points(p2);
+        new_points(p2) += -kdt * inv_mass(p2) * A21 * prev_points(p1);
+        // ..or something like that anyway.Not too concerned at the moment.
     }
 }

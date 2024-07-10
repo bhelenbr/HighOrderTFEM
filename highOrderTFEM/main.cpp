@@ -3,6 +3,7 @@
 #include <Kokkos_Core.hpp>
 #include <mesh.hpp>
 #include <fem.hpp>
+#include <iomanip>
 
 int main(int argc, char *argv[])
 {
@@ -18,7 +19,16 @@ int main(int argc, char *argv[])
         TFEM::DeviceMesh::HostMirrorMesh host_mesh;
         TFEM::load_meshes_from_grd_file(argv[1], device_mesh, host_mesh);
 
-        assert(host_mesh.boundary_edges.is_allocated());
+        TFEM::MeshColorMap coloring(device_mesh);
+        std::cout << "Colored into " << coloring.color_count() << " partitions" << std::endl;
+        std::cout << "Sizes:";
+        for (int color = 0; color < coloring.color_count(); color++)
+        {
+            std::cout << " " << coloring.member_count(color);
+            assert(coloring.color_member_ids_host(color).extent(0) == coloring.member_count(color));
+        }
+        std::cout << std::endl;
+        TFEM::validate_mesh_coloring(host_mesh, coloring);
 
         std::cout << "Mesh size: " << host_mesh.point_count()
                   << " " << host_mesh.edge_count()
@@ -40,7 +50,7 @@ int main(int argc, char *argv[])
         TFEM::SolutionWriter writer("out/slices.json", host_mesh);
         TFEM::Solver solver(device_mesh, 1E-2, 1E-2);
 
-        auto point_weight_mirror = Kokkos::create_mirror_view(solver.current_point_weights);
+        auto point_weight_mirror = Kokkos::create_mirror(solver.current_point_weights);
         Kokkos::deep_copy(point_weight_mirror, solver.current_point_weights);
         writer.add_slice(point_weight_mirror);
 
@@ -51,6 +61,8 @@ int main(int argc, char *argv[])
         {
             solver.simulate_steps(1000);
             Kokkos::deep_copy(point_weight_mirror, solver.current_point_weights);
+            Kokkos::fence();
+
             writer.add_slice(point_weight_mirror);
         }
 
@@ -58,8 +70,8 @@ int main(int argc, char *argv[])
 
         Kokkos::deep_copy(point_weight_mirror, solver.current_point_weights);
 
-        std::cout << "Final point 0 weight: " << point_weight_mirror(0) << std::endl;
-        std::cout << "10000 step time (s): " << (stop_time - start_time);
+        std::cout << "Final point 0 weight: " << std::setprecision(15) << point_weight_mirror(0) << std::endl;
+        std::cout << "10000 step time (s): " << (stop_time - start_time) << std::endl;
     }
     Kokkos::finalize();
 }
