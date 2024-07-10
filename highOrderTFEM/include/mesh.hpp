@@ -229,6 +229,11 @@ namespace TFEM
         Kokkos::View<const int *>::HostMirror color_ids_host;
         int n_colors;
 
+        auto color_endpoints(int color)
+        {
+            return Kokkos::pair(color_index_host[color], color_index_host[color + 1]);
+        }
+
     public:
         MeshColorMap(DeviceMesh &mesh);
 
@@ -252,7 +257,7 @@ namespace TFEM
          */
         auto color_member_regions(int color)
         {
-            return Kokkos::subview(color_members, Kokkos::pair(color_index_host[color], color_index_host[color + 1]));
+            return Kokkos::subview(color_members, color_endpoints(color));
         }
 
         /**
@@ -260,7 +265,8 @@ namespace TFEM
          */
         auto color_member_ids(int color)
         {
-            return Kokkos::subview(color_ids, Kokkos::pair(color_index_host[color], color_index_host[color + 1]));
+            // TODO wrote this to test that things break
+            return Kokkos::subview(color_ids, color_endpoints(color));
         }
 
         /**
@@ -268,7 +274,7 @@ namespace TFEM
          */
         auto color_member_ids_host(int color)
         {
-            return Kokkos::subview(color_ids_host, Kokkos::pair(color_index_host[color], color_index_host[color + 1]));
+            return Kokkos::subview(color_ids_host, color_endpoints(color));
         }
     };
 

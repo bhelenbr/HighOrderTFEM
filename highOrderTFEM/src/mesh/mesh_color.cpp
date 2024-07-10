@@ -79,6 +79,7 @@ void MeshColorMap::do_color(DeviceMesh &mesh)
     Kokkos::parallel_for(mesh.region_count(), KOKKOS_LAMBDA(int i) {
         int color = region_to_colors(i) - 1;
         Kokkos::atomic_increment(&color_counts(color)); });
+    Kokkos::fence();
 
     // Step 2: cumulative sum to get start points.
     // A parallel for with 1 iteration is a bit awkward, but is a simple way
@@ -87,6 +88,7 @@ void MeshColorMap::do_color(DeviceMesh &mesh)
         for(int c = 0; c < n_colors; c++){
             color_index[c + 1] = color_index[c] + color_counts[c];
         } });
+    Kokkos::fence();
 
     // Step 3: If we reset the counts and do atomic_fetch_increment,
     // will will be able to tell which item within each color we are,
@@ -97,6 +99,7 @@ void MeshColorMap::do_color(DeviceMesh &mesh)
         int place_ind = color_index(color) + Kokkos::atomic_fetch_add(&color_counts[color], 1);
         color_members(place_ind) = mesh.regions(i);
         color_member_ids(place_ind) = i; });
+    Kokkos::fence();
 
     // Now we should have a nice CSR-like structure for iterating over colors!
     // Just need to make the indexing available at the host:
@@ -142,7 +145,7 @@ void TFEM::validate_mesh_coloring(typename DeviceMesh::HostMirrorMesh &mesh, Mes
             int id = color_ids(i);
             if (region_colors(id) > -1)
             {
-                std::cout << "Region " << id << " already colored " << color_ids(id) << ", again colored " << color << std::endl;
+                std::cout << "Region " << id << " already colored " << region_colors(id) << ", again colored " << color << std::endl;
             }
             else
             {
@@ -174,6 +177,30 @@ void TFEM::validate_mesh_coloring(typename DeviceMesh::HostMirrorMesh &mesh, Mes
                 else
                 {
                     point_regions(p) = id;
+                }
+            }
+        }
+    }
+    std::cout << "Done" << std::endl;
+
+    std::cout << "Validating index-value match..." << std::endl;
+    for (int color = 0; color < coloring.color_count(); color++)
+    {
+        auto host_color_regions = Kokkos::create_mirror_view(coloring.color_member_regions(color));
+        Kokkos::deep_copy(host_color_regions, coloring.color_member_regions(color));
+        auto host_color_ids = coloring.color_member_ids_host(color);
+
+        for (int i = 0; i < host_color_regions.extent(0); i++)
+        {
+            int id = host_color_ids(i);
+            Region r_color = host_color_regions(i);
+            Region r_mesh = mesh.regions(id);
+
+            for (int j = 0; j < 3; j++)
+            {
+                if (r_color[j] != r_mesh[j])
+                {
+                    std::cout << "Values for coloring region (" << color << ", " << i << ") and corresponding mesh region " << id << " do not match at point " << j << ": " << r_color[j] << " vs " << r_mesh[j] << std::endl;
                 }
             }
         }
