@@ -23,23 +23,21 @@ namespace TFEM
             int ny;
         };
 
+        struct ZeroBoundaryTerm
+        {
+            double amplitude;
+            double coef_t;
+            double coef_x;
+            double coef_y;
+        };
+
         /**
          * Analytical solutions to a rectangular region where boundaries are held to 0
          */
-        template <typename ExecSpace = Kokkos::DefaultExecutionSpace, class... ViewTraits>
+        template <class TermView = Kokkos::View<ZeroBoundaryTerm *>>
         class ZeroBoundary
         {
-        public:
-            struct ZeroBoundaryTerm
-            {
-                double amplitude;
-                double coef_t;
-                double coef_x;
-                double coef_y;
-            };
-
         protected:
-            using TermView = Kokkos::View<ZeroBoundaryTerm *, ExecSpace, ViewTraits...>;
             TermView terms;
             double x_shift;
             double y_shift;
@@ -54,11 +52,13 @@ namespace TFEM
              *  - y_width: y-dimension of the rectangular region
              */
             ZeroBoundary(double k, double x_start, double x_width, double y_start, double y_width, std::vector<Term> solution_terms)
-                : terms("Analytical solution terms", terms.size()),
-                  x_shift(x_start), y_shift(y_start)
+                : x_shift(x_start),
+                  y_shift(y_start)
             {
                 // Assemble terms on host. Shouldn't be too many so not bothering with parallelism
+                terms = TermView("analytic solution terms", solution_terms.size());
                 auto terms_mirror = Kokkos::create_mirror_view(terms);
+
                 for (int i = 0; i < solution_terms.size(); i++)
                 {
                     Term t = solution_terms[i];
@@ -83,7 +83,7 @@ namespace TFEM
                 double result = 0;
                 for (int i = 0; i < terms.extent(0); i++)
                 {
-                    auto term = terms(i);
+                    const ZeroBoundaryTerm &term = terms(i);
                     result += term.amplitude * (exp(t * term.coef_t)) * sin((x - x_shift) * term.coef_x) * sin((y - y_shift) * term.coef_y);
                 }
                 return result;
