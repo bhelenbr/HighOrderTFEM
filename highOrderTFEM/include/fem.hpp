@@ -110,8 +110,7 @@ namespace TFEM
          * Returns the mean squared pointwise error of the current timestep agaisnt the
          * original analytic solution.
          *
-         * Note that this also measures error at the boundary, which may result in counterintuitive scaling.
-         * Fix this later.
+         * Assumes boundary error is held to 0, and measures only interior error.
          */
         double measure_error();
     };

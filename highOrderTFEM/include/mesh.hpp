@@ -177,6 +177,7 @@ namespace TFEM
         inline int edge_count() { return n_edges; }
         inline int region_count() { return n_regions; }
         inline pointID point_count() { return n_points; }
+        inline int boundary_edge_count() { return boundary_edges.entries.extent(0); }
     };
 
     // Create alias for convenience

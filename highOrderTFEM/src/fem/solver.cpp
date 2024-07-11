@@ -89,12 +89,12 @@ void Solver::fix_boundary()
     auto mesh = this->mesh;
     auto current_points = this->current_point_weights;
     // For now, disregard how edges are segmented and set to 0.
-    Kokkos::parallel_for(mesh.boundary_edges.entries.extent(0), KOKKOS_LAMBDA(int i) { 
-        int edge_id = mesh.boundary_edges.entries(i);
-        Edge e = mesh.edges(edge_id);
-        for(int p = 0; p < 2; p++){
-            current_points(e[p]) = 0; // This likely double-sets, but that's fine- it should be the same value
-        } });
+    Kokkos::parallel_for(mesh.boundary_edge_count(), KOKKOS_LAMBDA(int i) {
+        auto edge_id = mesh.boundary_edges.entries(i);
+        auto e = mesh.edges(edge_id);
+
+        current_points(e[0]) = 0; // Assume that the boundary is closed and uniformly directed, so this hits every boundary point
+    });
 }
 
 double Solver::measure_error()
@@ -103,14 +103,17 @@ double Solver::measure_error()
     auto mesh = this->mesh;
     auto current_points = this->current_point_weights;
     auto analytic = this->boundary;
-    double result = 0;
+    double all_result = 0;
     Kokkos::parallel_reduce(mesh.point_count(), KOKKOS_LAMBDA(const int &i, double &err_sum) {
         Point p = mesh.points(i);
         double numerical_value = current_points(i);
-        double analytic_value = analytic(t, p[0], p[1]);
-        err_sum += pow(analytic_value - numerical_value, 2); }, result);
+        double analytic_value = analytic(p[0], p[1], t);
+        err_sum += pow(analytic_value - numerical_value, 2); }, all_result);
 
-    return result / mesh.point_count();
+    // Boundary points are held to correct, so they contribute 0 error
+    // but don't really give a good idea of whats going on in the interior.
+    // Measure only interior points.
+    return (all_result) / (mesh.point_count() - mesh.boundary_edge_count());
 }
 
 SolverImpl::ElementContributionFunctor Solver::create_element_contribution_functor()

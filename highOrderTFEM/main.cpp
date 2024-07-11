@@ -77,7 +77,7 @@ int main(int argc, char *argv[])
             solver.simulate_steps(1000);
             Kokkos::deep_copy(point_weight_mirror, solver.current_point_weights);
             Kokkos::fence();
-            std::cout << "Error: " << solver.measure_error() << std::endl;
+            std::cout << "Mean square error: " << solver.measure_error() << std::endl;
 
             writer.add_slice(point_weight_mirror);
         }
