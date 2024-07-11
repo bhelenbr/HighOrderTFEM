@@ -2,6 +2,7 @@
 #include "mesh.hpp"
 #include "fem.hpp"
 #include "analytical.hpp"
+#include <iostream>
 
 using namespace TFEM;
 
@@ -42,34 +43,28 @@ void Solver::setup_mass_matrix()
     int num_elems = mesh.region_count();
     int num_points = mesh.point_count();
 
-    // per-element function to
-    auto add_element_contributions = KOKKOS_LAMBDA(Region element)
-    {
-        Point pts[3];
-        for (int j = 0; j < 3; j++)
-        {
-            pts[j] = mesh.points(element[j]);
-        }
-        // compute |J| for this triangle
-        double jacob = det_jacobian(pts);
-        // compute mass-lumped entries for the inverse of the mass matrix
-        double c = (jacob * (2 / 3)) / dt;
-        for (int j = 0; j < 3; j++)
-        {
-            Kokkos::atomic_add(&point_mass_inv(element[j]), c);
-        }
-    };
-
     for (int color = 0; color < element_coloring.color_count(); color++)
     {
         auto color_elements = element_coloring.color_member_regions(color);
         Kokkos::parallel_for(color_elements.extent(0), KOKKOS_LAMBDA(const int &i) {
-           Region element = color_elements(i);
-           add_element_contributions(element); });
+            Region element = color_elements(i);
+            Point pts[3];
+            for (int j = 0; j < 3; j++)
+            {
+                pts[j] = mesh.points(element[j]);
+            }
+            // compute |J| for this triangle
+            double jacob = det_jacobian(pts);
+            // compute mass-lumped entries for the inverse of the mass matrix
+            double c = (jacob * (2 / 3)) / dt;
+            for (int j = 0; j < 3; j++)
+            {
+                point_mass_inv(element[j]) += c;
+            } });
         Kokkos::fence();
     }
 
-    Kokkos::parallel_for(num_elems, KOKKOS_LAMBDA(const int &i) { //
+    Kokkos::parallel_for(num_points, KOKKOS_LAMBDA(const int &i) { //
         point_mass_inv(i) = 1 / point_mass_inv(i);
     });
     Kokkos::fence();
