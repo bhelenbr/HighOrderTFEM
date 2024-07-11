@@ -7,6 +7,7 @@
 #include <Kokkos_Core.hpp>
 #include "mesh.hpp"
 #include "type_magic.hpp"
+#include "analytical.hpp"
 
 namespace TFEM
 {
@@ -32,6 +33,7 @@ namespace TFEM
         // Mesh and coloring
         DeviceMesh mesh;
         MeshColorMap element_coloring;
+        Analytical::ZeroBoundary<> boundary;
 
         // Parameters
         double dt;
@@ -97,12 +99,20 @@ namespace TFEM
         PointWeightBuffer prev_point_weights;
         ConstPointWeightBuffer prev_point_weights_readonly;
 
-        Solver(DeviceMesh mesh, double timestep, double k);
+        Solver(DeviceMesh, MeshColorMap, Analytical::ZeroBoundary<>, double timestep, double k);
 
         /**
          * Runs the next n steps of the simulation
          */
         void simulate_steps(int n_steps);
+
+        /**
+         * Returns the mean squared pointwise error of the current timestep agaisnt the
+         * original analytic solution.
+         *
+         * Assumes boundary error is held to 0, and measures only interior error.
+         */
+        double measure_error();
     };
 
     /**
