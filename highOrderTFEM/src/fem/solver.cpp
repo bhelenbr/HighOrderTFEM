@@ -24,12 +24,55 @@ Solver::Solver(DeviceMesh mesh, MeshColorMap color, Analytical::ZeroBoundary<> b
     Kokkos::fence();
 }
 
+KOKKOS_INLINE_FUNCTION double det_jacobian(Point pts[3])
+{
+    return 0.5 * ((pts[2][0] - pts[1][0]) * (pts[0][1] - pts[1][1]) - (pts[0][0] - pts[1][0]) * (pts[2][1] - pts[1][1]));
+}
+
 void Solver::setup_mass_matrix()
 {
     // TODO make this legit based on mesh
     // Right now give dummy scalar of all ones
-    point_mass_inv_readonly = point_mass_inv;
-    Kokkos::deep_copy(point_mass_inv, 1.0);
+
+    auto mesh = this->mesh;
+    auto dt = this->dt;
+    auto point_mass_inv = this->point_mass_inv;
+    this->point_mass_inv_readonly = point_mass_inv;
+
+    int num_elems = mesh.region_count();
+    int num_points = mesh.point_count();
+
+    // per-element function to
+    auto add_element_contributions = KOKKOS_LAMBDA(Region element)
+    {
+        Point pts[3];
+        for (int j = 0; j < 3; j++)
+        {
+            pts[j] = mesh.points(element[j]);
+        }
+        // compute |J| for this triangle
+        double jacob = det_jacobian(pts);
+        // compute mass-lumped entries for the inverse of the mass matrix
+        double c = (jacob * (2 / 3)) / dt;
+        for (int j = 0; j < 3; j++)
+        {
+            Kokkos::atomic_add(&point_mass_inv(element[j]), c);
+        }
+    };
+
+    for (int color = 0; color < element_coloring.color_count(); color++)
+    {
+        auto color_elements = element_coloring.color_member_regions(color);
+        Kokkos::parallel_for(color_elements.extent(0), KOKKOS_LAMBDA(const int &i) {
+           Region element = color_elements(i);
+           add_element_contributions(element); });
+        Kokkos::fence();
+    }
+
+    Kokkos::parallel_for(num_elems, KOKKOS_LAMBDA(const int &i) { //
+        point_mass_inv(i) = 1 / point_mass_inv(i);
+    });
+    Kokkos::fence();
 }
 
 // DUMMY
@@ -123,19 +166,42 @@ SolverImpl::ElementContributionFunctor Solver::create_element_contribution_funct
 
 KOKKOS_INLINE_FUNCTION void SolverImpl::ElementContributionFunctor::operator()(Region element) const
 {
-    // TODO put the magic here!
-    // This is where the contribution for an element is calculated.
-    // Right now I have made up a dummy.
-    for (int edge_i = 0; edge_i < 3; edge_i++)
+    Point pts[3];
+    for (int j = 0; j < 3; j++)
     {
-        pointID p1 = element[edge_i];
-        pointID p2 = element[((edge_i + 1) % 3)];
-
-        double A12 = 1.0;
-        double A21 = 1.0;
-
-        new_points(p1) += -kdt * inv_mass(p1) * A12 * prev_points(p2);
-        new_points(p2) += -kdt * inv_mass(p2) * A21 * prev_points(p1);
-        // ..or something like that anyway. Not too concerned at the moment.
+        pts[j] = mesh.points(element[j]);
+    }
+    // compute |J| for this triangle
+    double jacob = det_jacobian(pts);
+    // compute entries in the vector S*c^n, where S is the stiffness matrix and c^n is the vector of coefficients from the n-th time step
+    double dx_de = 0.5 * (pts[0][0] - pts[1][0]);
+    double dx_dn = 0.5 * (pts[2][0] - pts[1][0]);
+    double dy_de = 0.5 * (pts[0][1] - pts[1][1]);
+    double dy_dn = 0.5 * (pts[2][1] - pts[1][1]);
+    double du_de = 0.5 * (prev_points(element[2]) - prev_points(element[1]));
+    double du_dn = 0.5 * (prev_points(element[0]) - prev_points(element[1]));
+    double du_dx = (0.25 / jacob) * (dy_dn * du_de - dy_de * du_dn);
+    double du_dy = (0.25 / jacob) * (-dx_dn * du_de + dx_de * du_dn);
+    for (int j = 0; j < 3; j++)
+    {
+        double dp_dx;
+        double dp_dy;
+        if (j == 0)
+        {
+            dp_dx = (0.5 / jacob) * (-dy_de);
+            dp_dy = (0.5 / jacob) * (dx_de);
+        }
+        else if (j == 1)
+        {
+            dp_dx = (0.5 / jacob) * (-dy_dn + dy_de);
+            dp_dy = (0.5 / jacob) * (dx_dn - dx_de);
+        }
+        else
+        {
+            dp_dx = (0.5 / jacob) * (dy_dn);
+            dp_dy = (0.5 / jacob) * (-dx_dn);
+        }
+        double c = 2 * jacob * (dp_dx * du_dx + dp_dy * du_dy);
+        new_points(element[j]) += -k * inv_mass(element[j]) * c;
     }
 }
