@@ -36,7 +36,6 @@ void Solver::setup_mass_matrix()
     // Right now give dummy scalar of all ones
 
     auto mesh = this->mesh;
-    auto dt = this->dt;
     auto point_mass_inv = this->point_mass_inv;
     this->point_mass_inv_readonly = point_mass_inv;
 
@@ -56,7 +55,7 @@ void Solver::setup_mass_matrix()
             // compute |J| for this triangle
             double jacob = det_jacobian(pts);
             // compute mass-lumped entries for the inverse of the mass matrix
-            double c = (jacob * 2 / 3) / dt;
+            double c = (jacob * 2 / 3);
             for (int j = 0; j < 3; j++)
             {
                 point_mass_inv(element[j]) += c;
@@ -197,9 +196,10 @@ KOKKOS_INLINE_FUNCTION void SolverImpl::ElementContributionFunctor::operator()(R
             dp_dy = (0.5 / jacob) * (-dx_dn);
         }
         double c = 2 * jacob * (dp_dx * du_dx + dp_dy * du_dy);
-        //if (element[j] == 50) {
-          //printf("c: %f, |J|: %f, gradients: %f\n", c, jacob, dp_dx * du_dx + dp_dy * du_dy);
-        //}
-        new_points(element[j]) += -k * inv_mass(element[j]) * c;
+        if (element[j] == 15102) {
+          printf("dp/dx: %f,   du/dx: %f,   dp_dy: %f,   du_dy: %f\n",dp_dx,du_dx,dp_dy,du_dy):
+          printf("c: %f, |J|: %f, gradients: %f\n", c, jacob, dp_dx * du_dx + dp_dy * du_dy);
+        }
+        new_points(element[j]) += -k * dt * inv_mass(element[j]) * c;
     }
 }

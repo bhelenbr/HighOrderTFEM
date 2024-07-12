@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
 
         // Create an analytical solution to test against
         double k = 1E-2;
-        double dt = 1E-2;
+        double dt = 1E-5;
         std::vector<TFEM::Analytical::Term> terms;
         terms.push_back({1.0, 1, 1});
         terms.push_back({2.0, 1, 3});
