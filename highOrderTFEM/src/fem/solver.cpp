@@ -27,6 +27,8 @@ Solver::Solver(DeviceMesh mesh, MeshColorMap color, Analytical::ZeroBoundary<> b
 
 KOKKOS_INLINE_FUNCTION double det_jacobian(Point pts[3])
 {
+    //printf("1st half: %f, and 2nd half: %f, and total: %f\n", (pts[2][0] - pts[1][0]) * (pts[0][1] - pts[1][1]), (pts[0][0] - pts[1][0]) * (pts[2][1] - pts[1][1]), ((pts[2][0] - pts[1][0]) * (pts[0][1] - pts[1][1]) - (pts[0][0] - pts[1][0]) * (pts[2][1] - pts[1][1])));
+    //printf("2nd half: %f\n", (pts[0][0] - pts[1][0]) * (pts[2][1] - pts[1][1]));
     return 0.5 * ((pts[2][0] - pts[1][0]) * (pts[0][1] - pts[1][1]) - (pts[0][0] - pts[1][0]) * (pts[2][1] - pts[1][1]));
 }
 
@@ -52,11 +54,14 @@ void Solver::setup_mass_matrix()
             for (int j = 0; j < 3; j++)
             {
                 pts[j] = mesh.points(element[j]);
+                //printf("point %d, x-coordinate: %f\n",element[j],pts[j][0]);
+                //printf("point %d, y-coordinate: %f\n",element[j],pts[j][1]);
             }
             // compute |J| for this triangle
             double jacob = det_jacobian(pts);
             // compute mass-lumped entries for the inverse of the mass matrix
-            double c = (jacob * (2 / 3)) / dt;
+            double c = (jacob * 2 / 3) / dt;
+            //printf("%f\n",c);
             for (int j = 0; j < 3; j++)
             {
                 point_mass_inv(element[j]) += c;
