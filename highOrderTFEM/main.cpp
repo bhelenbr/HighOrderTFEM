@@ -66,6 +66,7 @@ int main(int argc, char *argv[])
         auto point_weight_mirror = Kokkos::create_mirror(solver.current_point_weights);
         Kokkos::deep_copy(point_weight_mirror, solver.current_point_weights);
         writer.add_slice(point_weight_mirror);
+        Kokkos::fence();
 
         std::cout << "Starting simulation" << std::endl;
 
@@ -80,6 +81,7 @@ int main(int argc, char *argv[])
             std::cout << "Mean square error: " << solver.measure_error() << std::endl;
 
             writer.add_slice(point_weight_mirror);
+            Kokkos::fence();
         }
 
         double stop_time = timer.seconds();

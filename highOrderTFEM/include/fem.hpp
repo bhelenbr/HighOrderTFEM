@@ -130,7 +130,8 @@ namespace TFEM
             Solver::ConstPointWeightBuffer prev_points;
             Solver::ConstInvMassMatrix inv_mass;
             DeviceMesh mesh;
-            double kdt;
+            double k;
+            double dt;
 
             ElementContributionFunctor(Solver::PointWeightBuffer new_points,
                                        Solver::ConstPointWeightBuffer prev_points,
@@ -141,7 +142,8 @@ namespace TFEM
                   prev_points(prev_points),
                   inv_mass(inv_mass),
                   mesh(mesh),
-                  kdt(k * dt)
+                  k(k),
+                  dt(dt)
             { // Pretty much just the initializer list
             }
 

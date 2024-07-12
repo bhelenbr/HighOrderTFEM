@@ -1,1 +1,0 @@
-target_sources(lib PUBLIC ./mesh.cpp)
