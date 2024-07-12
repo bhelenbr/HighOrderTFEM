@@ -29,7 +29,7 @@ KOKKOS_INLINE_FUNCTION double det_jacobian(Point pts[3])
 {
     //printf("1st half: %f, and 2nd half: %f, and total: %f\n", (pts[2][0] - pts[1][0]) * (pts[0][1] - pts[1][1]), (pts[0][0] - pts[1][0]) * (pts[2][1] - pts[1][1]), ((pts[2][0] - pts[1][0]) * (pts[0][1] - pts[1][1]) - (pts[0][0] - pts[1][0]) * (pts[2][1] - pts[1][1])));
     //printf("2nd half: %f\n", (pts[0][0] - pts[1][0]) * (pts[2][1] - pts[1][1]));
-    return 0.5 * ((pts[2][0] - pts[1][0]) * (pts[0][1] - pts[1][1]) - (pts[0][0] - pts[1][0]) * (pts[2][1] - pts[1][1]));
+    return 0.25 * ((pts[2][0] - pts[1][0]) * (pts[0][1] - pts[1][1]) - (pts[0][0] - pts[1][0]) * (pts[2][1] - pts[1][1]));
 }
 
 void Solver::setup_mass_matrix()
@@ -89,7 +89,7 @@ void Solver::setup_initial_conditions()
         Point p = mesh.points(i);
         double x = p[0];
         double y = p[1];
-        current_points(i) = boundary(0, x, y); });
+        current_points(i) = boundary(x, y, 0); });
 }
 
 void Solver::simulate_steps(int n_steps)
@@ -180,8 +180,8 @@ KOKKOS_INLINE_FUNCTION void SolverImpl::ElementContributionFunctor::operator()(R
     double dy_dn = 0.5 * (pts[2][1] - pts[1][1]);
     double du_de = 0.5 * (prev_points(element[2]) - prev_points(element[1]));
     double du_dn = 0.5 * (prev_points(element[0]) - prev_points(element[1]));
-    double du_dx = (0.25 / jacob) * (dy_dn * du_de - dy_de * du_dn);
-    double du_dy = (0.25 / jacob) * (-dx_dn * du_de + dx_de * du_dn);
+    double du_dx = (1 / jacob) * (dy_dn * du_de - dy_de * du_dn);
+    double du_dy = (1 / jacob) * (-dx_dn * du_de + dx_de * du_dn);
     for (int j = 0; j < 3; j++)
     {
         double dp_dx;
@@ -202,6 +202,9 @@ KOKKOS_INLINE_FUNCTION void SolverImpl::ElementContributionFunctor::operator()(R
             dp_dy = (0.5 / jacob) * (-dx_dn);
         }
         double c = 2 * jacob * (dp_dx * du_dx + dp_dy * du_dy);
+        //if (element[j] == 50) {
+          //printf("c: %f, |J|: %f, gradients: %f\n", c, jacob, dp_dx * du_dx + dp_dy * du_dy);
+        //}
         new_points(element[j]) += -k * inv_mass(element[j]) * c;
     }
 }
