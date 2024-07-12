@@ -89,8 +89,9 @@ void Solver::setup_initial_conditions()
 
 void Solver::simulate_steps(int n_steps)
 {
-    for (int i = 0; i < n_steps; (i++, n_total_steps++))
+    for (int i = 0; i < n_steps; i++)
     {
+        n_total_steps++;
         Kokkos::fence();
         prepare_next_step();
         Kokkos::fence();
@@ -137,7 +138,7 @@ void Solver::fix_boundary()
 
 double Solver::measure_error()
 {
-    double t = n_total_steps * dt;
+    double t = time();
     auto mesh = this->mesh;
     auto current_points = this->current_point_weights;
     auto analytic = this->boundary;
@@ -197,9 +198,6 @@ KOKKOS_INLINE_FUNCTION void SolverImpl::ElementContributionFunctor::operator()(R
             dp_dy = (0.5 / jacob) * (-dx_dn);
         }
         double c = 2 * jacob * (dp_dx * du_dx + dp_dy * du_dy);
-        //if (element[j] == 50) {
-          //printf("c: %f, |J|: %f, gradients: %f\n", c, jacob, dp_dx * du_dx + dp_dy * du_dy);
-        //}
         new_points(element[j]) += -k * inv_mass(element[j]) * c;
     }
 }

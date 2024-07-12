@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
 
         // Create an analytical solution to test against
         double k = 1E-2;
-        double dt = 1E-2;
+        double dt = 1E-5;
         std::vector<TFEM::Analytical::Term> terms;
         terms.push_back({1.0, 1, 1});
         terms.push_back({2.0, 1, 3});
@@ -61,7 +61,7 @@ int main(int argc, char *argv[])
 
         // Create solver and output writer
         TFEM::SolutionWriter writer("out/slices.json", host_mesh);
-        TFEM::Solver solver(device_mesh, coloring, analytical, k, dt);
+        TFEM::Solver solver(device_mesh, coloring, analytical, dt, k);
 
         auto point_weight_mirror = Kokkos::create_mirror(solver.current_point_weights);
         Kokkos::deep_copy(point_weight_mirror, solver.current_point_weights);
