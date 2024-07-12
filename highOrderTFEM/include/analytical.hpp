@@ -62,11 +62,13 @@ namespace TFEM
                 for (int i = 0; i < solution_terms.size(); i++)
                 {
                     Term t = solution_terms[i];
+                    double lambda_x = t.nx * M_PI / x_width;
+                    double lambda_y = t.ny * M_PI / y_width;
                     terms_mirror(i) = {
-                        t.coef,                             // amplitude
-                        -k * (pow(t.nx, 2) + pow(t.ny, 2)), // t
-                        t.nx * M_PI / x_width,              // x
-                        t.ny * M_PI / y_width};             // y
+                        t.coef,                                     // amplitude
+                        -k * (pow(lambda_x, 2) + pow(lambda_y, 2)), // t
+                        lambda_x,                                   // x
+                        lambda_y};                                  // y
                 }
 
                 // copy host to device
