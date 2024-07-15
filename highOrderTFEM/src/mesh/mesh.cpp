@@ -3,11 +3,34 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <random>
+#include <utility> // pair, etc
 
 using namespace TFEM;
 using namespace std;
 
-void TFEM::load_meshes_from_grd_file(string fname, DeviceMesh &device_mesh, DeviceMesh::HostMirrorMesh &host_mesh)
+std::default_random_engine rnd{std::random_device{}()};
+uniform_real_distribution<double> dist(-1.0, 1.0);
+// Reasonable heuristic for unit circle random
+std::pair<double, double> unit_circle_almost_random()
+{
+
+    double x = dist(rnd);
+    double y = dist(rnd);
+
+    // this will deform the distribution a little bit but
+    // we don't care for our purposes
+    double rad = sqrt(pow(x, 2) + pow(y, 2));
+    if (rad > 1.0)
+    {
+        double rescale = dist(rnd) / rad;
+        x = x * rescale;
+        y = y * rescale;
+    }
+    return std::make_pair(x, y);
+}
+
+void TFEM::load_meshes_from_grd_file(string fname, DeviceMesh &device_mesh, DeviceMesh::HostMirrorMesh &host_mesh, bool fuzz)
 {
     ifstream input_file(fname);
     stringstream line_stream;
@@ -20,6 +43,7 @@ void TFEM::load_meshes_from_grd_file(string fname, DeviceMesh &device_mesh, Devi
     pointID n_points;
     int n_edges;
     int n_regions;
+    double fuzz_radius = 0.0;
 
     // Read header
     getline(input_file, cur_line);
@@ -34,6 +58,13 @@ void TFEM::load_meshes_from_grd_file(string fname, DeviceMesh &device_mesh, Devi
     line_stream >> string_buff;
     assert(string_buff == "ntri:");
     line_stream >> n_regions;
+
+    // if fuzz, assume a square grid on [-1, 1]^2 and calculate a safe fuzzing radius
+    if (fuzz)
+    {
+        double grid_square_size = 2.0 / (sqrt(n_points) - 1);
+        fuzz_radius = grid_square_size / 4; // could go up to sqrt(2)/4, but no need
+    }
 
     // Create the meshes!
     device_mesh = DeviceMesh(n_points, n_edges, n_regions);
@@ -136,4 +167,37 @@ void TFEM::load_meshes_from_grd_file(string fname, DeviceMesh &device_mesh, Devi
     // Construct the graph
     device_mesh.boundary_edges = Kokkos::create_staticcrsgraph<DeviceMesh::BoundaryEdgeMap>("Boundary edge segments", boundary_segments);
     host_mesh.boundary_edges = Kokkos::create_staticcrsgraph<DeviceMesh::HostMirrorMesh::BoundaryEdgeMap>("Boundary edge segments", boundary_segments);
+
+    // track which points are boundaries and which are not. Fuzz points that are not, list points that are.
+    host_mesh.boundary_points = DeviceMesh::HostMirrorMesh::BoundaryPointIndicator("Boundary edge flags", host_mesh.point_count());
+    Kokkos::deep_copy(host_mesh.boundary_points, false);
+    device_mesh.boundary_points = DeviceMesh::BoundaryPointIndicator("Boundary edge flags", host_mesh.point_count());
+
+    Kokkos::parallel_for(Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(0, host_mesh.boundary_edge_count()), KOKKOS_LAMBDA(int i) {
+        Edge e = host_mesh.edges(host_mesh.boundary_edges.entries(i));
+        host_mesh.boundary_points(e[0]) = true;
+        host_mesh.boundary_points(e[0] = true); });
+
+    host_mesh.n_boundary_points = 0;
+
+    for (int pointID = 0; pointID < host_mesh.point_count(); pointID++)
+    {
+        if (host_mesh.boundary_points(pointID))
+        {
+            host_mesh.n_boundary_points++;
+        }
+        else if (fuzz)
+        {
+            // fuzz
+            Point &point = host_mesh.points(pointID);
+            auto displacement = unit_circle_almost_random();
+            point[0] += fuzz_radius * displacement.first;
+            point[1] += fuzz_radius * displacement.second;
+        }
+    }
+    // Deep copy point displacements
+    Kokkos::deep_copy(device_mesh.points, host_mesh.points);
+    // Copy point boundary keys
+    Kokkos::deep_copy(device_mesh.boundary_points, host_mesh.boundary_points);
+    device_mesh.n_boundary_points = host_mesh.n_boundary_points;
 }
