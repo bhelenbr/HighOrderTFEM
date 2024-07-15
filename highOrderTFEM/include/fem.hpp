@@ -12,6 +12,8 @@
 namespace TFEM
 {
 
+    using Scalar = double; // wanted long double, cuda does not support :^)
+
     namespace SolverImpl
     {
         struct ElementContributionFunctor;
@@ -25,7 +27,7 @@ namespace TFEM
 
     protected:
         // Stores 1/diagonals (diagonals^-1) for the lumped diagonal mass matrix.
-        using InvMassMatrix = Kokkos::View<double *, Kokkos::MemoryTraits<Kokkos::RandomAccess>>;
+        using InvMassMatrix = Kokkos::View<Scalar *, Kokkos::MemoryTraits<Kokkos::RandomAccess>>;
         using ConstInvMassMatrix = constify_view_t<InvMassMatrix>;
         InvMassMatrix point_mass_inv;
         ConstInvMassMatrix point_mass_inv_readonly;
@@ -36,8 +38,8 @@ namespace TFEM
         Analytical::ZeroBoundary<> boundary;
 
         // Parameters
-        double dt;
-        double k;
+        long double dt;
+        long double k;
         int n_total_steps;
 
     public:
@@ -98,13 +100,13 @@ namespace TFEM
         // the nvidia compiler.
 
         // Weight buffers for storing state
-        using PointWeightBuffer = Kokkos::View<double *, Kokkos::MemoryTraits<Kokkos::RandomAccess>>;
+        using PointWeightBuffer = Kokkos::View<Scalar *, Kokkos::MemoryTraits<Kokkos::RandomAccess>>;
         using ConstPointWeightBuffer = constify_view_t<PointWeightBuffer>;
         PointWeightBuffer current_point_weights;
         PointWeightBuffer prev_point_weights;
         ConstPointWeightBuffer prev_point_weights_readonly;
 
-        Solver(DeviceMesh, MeshColorMap, Analytical::ZeroBoundary<>, double timestep, double k);
+        Solver(DeviceMesh, MeshColorMap, Analytical::ZeroBoundary<>, Scalar timestep, Scalar k);
 
         /**
          * Runs the next n steps of the simulation
@@ -117,7 +119,7 @@ namespace TFEM
          *
          * Assumes boundary error is held to 0, and measures only interior error.
          */
-        double measure_error();
+        Scalar measure_error();
     };
 
     /**
@@ -135,14 +137,14 @@ namespace TFEM
             Solver::ConstPointWeightBuffer prev_points;
             Solver::ConstInvMassMatrix inv_mass;
             DeviceMesh mesh;
-            double k;
-            double dt;
+            Scalar k;
+            Scalar dt;
 
             ElementContributionFunctor(Solver::PointWeightBuffer new_points,
                                        Solver::ConstPointWeightBuffer prev_points,
                                        Solver::ConstInvMassMatrix inv_mass,
                                        DeviceMesh mesh,
-                                       double k, double dt)
+                                       Scalar k, Scalar dt)
                 : new_points(new_points),
                   prev_points(prev_points),
                   inv_mass(inv_mass),
