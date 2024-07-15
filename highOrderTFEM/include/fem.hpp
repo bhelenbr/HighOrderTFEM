@@ -41,6 +41,8 @@ namespace TFEM
         int n_total_steps;
 
     public:
+        double time() { return dt * n_total_steps; }
+
         // Internal step simulation functions. Essentially called in order.
         // I would like very much for these to be private/protected, but
         // NVIDIA doesn't let device lambdas be in a private access space anywhere.
