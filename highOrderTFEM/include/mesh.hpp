@@ -59,6 +59,8 @@ namespace TFEM
     /**
      * Handles the input mesh file as a collection of views. Since different view types may be required
      * (in particular for different execution spaces), template off of them.
+     *
+     * The templating here is awkward and not very indicative of what it wants: use the predefined DeviceMesh, mostly.
      */
     template <class PointView, class EdgeView, class RegionView>
     class Mesh
@@ -95,10 +97,15 @@ namespace TFEM
         PointView points;
         EdgeView edges;
         RegionView regions;
+        int n_boundary_points;
 
         // Use CSR rowmap format to store IDs of boundary edges
         using BoundaryEdgeMap = Kokkos::StaticCrsGraph<int, typename EdgeView::execution_space>;
         BoundaryEdgeMap boundary_edges;
+
+        using BoundaryPointIndicator = Kokkos::View<bool *, typename EdgeView::execution_space>;
+        // true if boundary point, false otherwise
+        BoundaryPointIndicator boundary_points;
 
         /**
          * Sometimes need to leave an uninitialized mesh for later initialization
@@ -206,7 +213,7 @@ namespace TFEM
      *  Left-hand side ID's should be in ascending order.
      *  (Anything in <> is replaced with its value- the file does not include angle brackets)
      */
-    void load_meshes_from_grd_file(std::string fname, DeviceMesh &device_mesh, DeviceMesh::HostMirrorMesh &host_mesh);
+    void load_meshes_from_grd_file(std::string fname, DeviceMesh &device_mesh, DeviceMesh::HostMirrorMesh &host_mesh, bool fuzz = false);
 
     /**
      * Runs a (non-minimal) coloring algorithm on the regions in mesh so that no two elements
