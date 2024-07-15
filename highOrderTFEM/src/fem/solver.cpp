@@ -143,15 +143,16 @@ double Solver::measure_error()
     auto analytic = this->boundary;
     double all_result = 0;
     Kokkos::parallel_reduce(mesh.point_count(), KOKKOS_LAMBDA(const int &i, double &err_sum) {
-        Point p = mesh.points(i);
-        double numerical_value = current_points(i);
-        double analytic_value = analytic(p[0], p[1], t);
-        err_sum += pow(analytic_value - numerical_value, 2); }, all_result);
+        if(!mesh.boundary_points(i)) { // only compute error for interior
+            Point p = mesh.points(i);
+            double numerical_value = current_points(i);
+            double analytic_value = analytic(p[0], p[1], t);
+            err_sum += pow(analytic_value - numerical_value, 2);} }, all_result);
 
     // Boundary points are held to correct, so they contribute 0 error
     // but don't really give a good idea of whats going on in the interior.
     // Measure only interior points.
-    return (all_result) / (mesh.point_count() - mesh.boundary_edge_count());
+    return (all_result) / (mesh.point_count() - mesh.n_boundary_points);
 }
 
 SolverImpl::ElementContributionFunctor Solver::create_element_contribution_functor()

@@ -18,7 +18,8 @@ int main(int argc, char *argv[])
         // the first arg (after program name)
         TFEM::DeviceMesh device_mesh;
         TFEM::DeviceMesh::HostMirrorMesh host_mesh;
-        TFEM::load_meshes_from_grd_file(argv[1], device_mesh, host_mesh);
+        bool fuzz = false;
+        TFEM::load_meshes_from_grd_file(argv[1], device_mesh, host_mesh, fuzz);
 
         // Print mesh debug info
         std::cout << "Mesh size: " << host_mesh.point_count()
@@ -36,6 +37,7 @@ int main(int argc, char *argv[])
             }
             std::cout << std::endl;
         }
+        std::cout << "Number of boundary edges: " << host_mesh.boundary_edge_count() << " Number of boundary points: " << host_mesh.n_boundary_points << std::endl;
 
         // Find element coloring.
         TFEM::MeshColorMap coloring(device_mesh);
