@@ -6,7 +6,7 @@
 
 using namespace TFEM;
 
-Solver::Solver(DeviceMesh mesh, MeshColorMap color, Analytical::ZeroBoundary<> boundary_conditions, Scalar timestep, Scalar k)
+Solver::Solver(DeviceMesh mesh, MeshColorMap color, Analytical::ZeroBoundary<> boundary_conditions, double timestep, double k)
     : mesh(mesh),
       dt(timestep),
       n_total_steps(0),
@@ -25,7 +25,7 @@ Solver::Solver(DeviceMesh mesh, MeshColorMap color, Analytical::ZeroBoundary<> b
     Kokkos::fence();
 }
 
-KOKKOS_INLINE_FUNCTION Scalar det_jacobian(Point pts[3])
+KOKKOS_INLINE_FUNCTION double det_jacobian(Point pts[3])
 {
     return 0.25 * ((pts[2][0] - pts[1][0]) * (pts[0][1] - pts[1][1]) - (pts[0][0] - pts[1][0]) * (pts[2][1] - pts[1][1]));
 }
@@ -54,9 +54,9 @@ void Solver::setup_mass_matrix()
                 pts[j] = mesh.points(element[j]);
             }
             // compute |J| for this triangle
-            auto jacob = det_jacobian(pts);
+            double jacob = det_jacobian(pts);
             // compute mass-lumped entries for the inverse of the mass matrix
-            Scalar c = (jacob * 2.0 / 3.0) / dt;
+            double c = (jacob * 2 / 3) / dt;
             for (int j = 0; j < 3; j++)
             {
                 point_mass_inv(element[j]) += c;
@@ -82,8 +82,8 @@ void Solver::setup_initial_conditions()
 
     Kokkos::parallel_for(mesh.point_count(), KOKKOS_LAMBDA(int i) {
         Point p = mesh.points(i);
-        auto x = p[0];
-        auto y = p[1];
+        double x = p[0];
+        double y = p[1];
         current_points(i) = boundary(x, y, 0); });
 }
 
@@ -136,17 +136,17 @@ void Solver::fix_boundary()
     });
 }
 
-Scalar Solver::measure_error()
+double Solver::measure_error()
 {
-    auto t = time();
+    double t = time();
     auto mesh = this->mesh;
     auto current_points = this->current_point_weights;
     auto analytic = this->boundary;
-    Scalar all_result = 0;
-    Kokkos::parallel_reduce(mesh.point_count(), KOKKOS_LAMBDA(const int &i, Scalar &err_sum) {
+    double all_result = 0;
+    Kokkos::parallel_reduce(mesh.point_count(), KOKKOS_LAMBDA(const int &i, double &err_sum) {
         Point p = mesh.points(i);
-        auto numerical_value = current_points(i);
-        auto analytic_value = analytic(p[0], p[1], t);
+        double numerical_value = current_points(i);
+        double analytic_value = analytic(p[0], p[1], t);
         err_sum += pow(analytic_value - numerical_value, 2); }, all_result);
 
     // Boundary points are held to correct, so they contribute 0 error
@@ -168,20 +168,20 @@ KOKKOS_INLINE_FUNCTION void SolverImpl::ElementContributionFunctor::operator()(R
         pts[j] = mesh.points(element[j]);
     }
     // compute |J| for this triangle
-    auto jacob = det_jacobian(pts);
+    double jacob = det_jacobian(pts);
     // compute entries in the vector S*c^n, where S is the stiffness matrix and c^n is the vector of coefficients from the n-th time step
-    Scalar dx_de = 0.5 * (pts[0][0] - pts[1][0]);
-    Scalar dx_dn = 0.5 * (pts[2][0] - pts[1][0]);
-    Scalar dy_de = 0.5 * (pts[0][1] - pts[1][1]);
-    Scalar dy_dn = 0.5 * (pts[2][1] - pts[1][1]);
-    Scalar du_de = 0.5 * (prev_points(element[2]) - prev_points(element[1]));
-    Scalar du_dn = 0.5 * (prev_points(element[0]) - prev_points(element[1]));
-    Scalar du_dx = (1 / jacob) * (dy_dn * du_de - dy_de * du_dn);
-    Scalar du_dy = (1 / jacob) * (-dx_dn * du_de + dx_de * du_dn);
+    double dx_de = 0.5 * (pts[0][0] - pts[1][0]);
+    double dx_dn = 0.5 * (pts[2][0] - pts[1][0]);
+    double dy_de = 0.5 * (pts[0][1] - pts[1][1]);
+    double dy_dn = 0.5 * (pts[2][1] - pts[1][1]);
+    double du_de = 0.5 * (prev_points(element[2]) - prev_points(element[1]));
+    double du_dn = 0.5 * (prev_points(element[0]) - prev_points(element[1]));
+    double du_dx = (1 / jacob) * (dy_dn * du_de - dy_de * du_dn);
+    double du_dy = (1 / jacob) * (-dx_dn * du_de + dx_de * du_dn);
     for (int j = 0; j < 3; j++)
     {
-        Scalar dp_dx;
-        Scalar dp_dy;
+        double dp_dx;
+        double dp_dy;
         if (j == 0)
         {
             dp_dx = (0.5 / jacob) * (-dy_de);
@@ -197,7 +197,7 @@ KOKKOS_INLINE_FUNCTION void SolverImpl::ElementContributionFunctor::operator()(R
             dp_dx = (0.5 / jacob) * (dy_dn);
             dp_dy = (0.5 / jacob) * (-dx_dn);
         }
-        Scalar c = 2 * jacob * (dp_dx * du_dx + dp_dy * du_dy);
+        double c = 2 * jacob * (dp_dx * du_dx + dp_dy * du_dy);
         new_points(element[j]) += -k * inv_mass(element[j]) * c;
     }
 }
