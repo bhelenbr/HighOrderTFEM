@@ -10,7 +10,7 @@
 #include <mesh.hpp>
 #include <solver.hpp>
 #include <analytical.hpp>
-#include "scatter_add_pattern.hpp"
+#include "scatter_pattern.hpp"
 
 int main(int argc, char *argv[])
 {

@@ -8,7 +8,7 @@
 #include "mesh.hpp"
 #include "type_magic.hpp"
 #include "analytical.hpp"
-#include "scatter_add_pattern.hpp"
+#include "scatter_pattern.hpp"
 
 namespace TFEM
 {

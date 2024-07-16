@@ -3,7 +3,7 @@
 #include "solver.hpp"
 #include "analytical.hpp"
 #include <iostream>
-#include "scatter_add_pattern.hpp"
+#include "scatter_pattern.hpp"
 
 using namespace TFEM;
 
