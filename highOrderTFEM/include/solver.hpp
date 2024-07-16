@@ -64,7 +64,9 @@ namespace TFEM
         /**
          * INTENDED PRIVATE: DO NOT CALL. Instead see simulate_steps()
          *
-         * Initialze current_point_weights with the initial values.
+         * Initialze current_point_weights with the initial values to match with
+         * the provided analytical solution.
+         *
          * Prev points may be left as garbage values.
          */
         void setup_initial_conditions();
@@ -78,7 +80,10 @@ namespace TFEM
         /**
          * INTENDED PRIVATE: DO NOT CALL. Instead see simulate_steps()
          *
-         * Execute the main body of a step.
+         * Execute the main body of a step. Adjusts the current_point_weights
+         * only by adding/subtracting the changes provided by the residual: the
+         * current point weights should still contain the values from the
+         * previous time step to take care of the I-matrix term.
          */
         void compute_step();
 
@@ -91,15 +96,8 @@ namespace TFEM
          */
         void fix_boundary();
 
-        /**
-         * INTENDED PRIVATE: DO NOT CALL. Instead see simulate_steps()
-         *
-         * Creates a functor that can be called to process each element.
-         */
-        SolverImpl::ElementContributionFunctor<ScatterPattern> create_element_contribution_functor();
-
     public:
-        // This stuff was intended to be public, rather than being forced to make it accessible to
+        // This section was intended to be public, rather than being forced to make it accessible to
         // the nvidia compiler.
 
         // Weight buffers for storing state
@@ -107,12 +105,15 @@ namespace TFEM
         using ConstPointWeightBuffer = constify_view_t<PointWeightBuffer>;
         PointWeightBuffer current_point_weights;
         PointWeightBuffer prev_point_weights;
+        // The readonly views map to the exact same memory as the writable views- updating the writable views
+        // implicitly updates the read-only view. Using the readonly view possibly enables more compiler
+        // optimizations.
         ConstPointWeightBuffer prev_point_weights_readonly;
 
         Solver(DeviceMesh, ScatterPattern, Analytical::ZeroBoundary<>, double timestep, double k);
 
         /**
-         * Runs the next n steps of the simulation
+         * Runs the next n steps of the simulation, modifying current_point_weights in place.
          */
         void simulate_steps(int n_steps);
 
@@ -120,20 +121,23 @@ namespace TFEM
          * Returns the mean squared pointwise error of the current timestep agaisnt the
          * original analytic solution.
          *
-         * Assumes boundary error is held to 0, and measures only interior error.
+         * Assumes boundary error is held to 0, and measures only interior error: takes the
+         * sum of error at each interior point, then divides by the number of interior points.
          */
         double measure_error();
     };
 
     /**
      * To prevent issues such as implicit capture of the "this" pointer, per-element work is
-     * placed in this functor where captures are more explicitly visible.
+     * placed in functors where the captures are more explicitly visible. This also allows
+     * functors to be used alongside the ScatterAdd pattern.
      */
     namespace SolverImpl
     {
-        // Functor called once with each element to update its contribution.
-        // Can assume that each point and edge for each element are not being
-        // touched by another thread.
+        /**
+         * A functor for computing the contribution each element makes to the new state,
+         * called inside of the main time advancement loop.
+         */
         template <typename ScatterPattern>
         struct ElementContributionFunctor
         {
@@ -160,14 +164,14 @@ namespace TFEM
             }
 
             /**
-             * Adds the partial contributions of an element to all pertinent basis functions.
-             *
-             * TODO: put the magic here!
+             * Adds the partial contributions of an element to all pertinent coefficients.
              */
             KOKKOS_INLINE_FUNCTION void operator()(Region element) const;
         };
 
-        // Functor called once per element to assemble the mass matrix
+        /**
+         * Functor called once per element when assembling the diagonal lumped mass matrix.
+         */
         template <typename ScatterPattern>
         struct MassMatrixFunctor
         {
@@ -189,14 +193,15 @@ namespace TFEM
             }
 
             /**
-             * Adds the partial contributions of an element to all pertinent basis functions.
-             *
-             * TODO: put the magic here!
+             * Adds the contribution from the given element to the diagonal mass matrix
              */
             KOKKOS_INLINE_FUNCTION void operator()(Region element) const;
         };
     } // namespace SolverImpl
 
+    /**
+     * A (somewhat hacky) class for outputing snapshots of the simulation state.
+     */
     class SolutionWriter
     {
     protected:

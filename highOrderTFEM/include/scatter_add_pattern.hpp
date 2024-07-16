@@ -23,6 +23,13 @@ namespace TFEM
     //     static KOKKOS_INLINE_FUNCTION void contribute(Arg1 arg1, Arg2 arg2, ...);
     // }
 
+    /**
+     * Scatter add pattern where the contribution operation is a double-precision add
+     * and work is dispatched on a per-element basis.
+     *
+     * Uses atomic operations to implement the contribution operation, allowing for
+     * arbitrary work dispatch patterns.
+     */
     class AtomicElementScatterAdd
     {
     private:
@@ -49,6 +56,13 @@ namespace TFEM
         }
     };
 
+    /**
+     * Scatter add pattern where the contribution operation is a double-precision add and
+     * work is distributed on a per-element basis, and each element only needs to write to
+     * its local points/edges.
+     * 
+     * Uses a coloring algorithm to ensure that elements sharing points are not running synchronously.
+     */
     class ColoredElementScatterAdd
     {
     private:

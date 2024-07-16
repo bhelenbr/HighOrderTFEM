@@ -12,13 +12,17 @@
 namespace TFEM
 {
 
-    typedef int pointID; // in case this needs to be upgraded later, and for clear code semantics
+    // Type alias in case we need to change the type later, and to make the code more readable.
+    typedef int pointID;
+
+    // Arrays have some tricky device copy behavior (since the type behaves like a pointer),
+    // so these structs are to make bundling a single point/edge/region easier. This could
+    // also be approached via a multidimensional view, with rows being the entries of the
+    // same point, but this makes it more dificult to move single points around.
 
     /**
-     * Arrays have some trick device semantics (they are like pointers)
-     * and multi-dimensional views are inconvenient for calling functions on single
-     * items. Therefore the Point, Edge, and Region classes allow for easy array-like
-     * usage while still being copyable.
+     * A struct containing the real-space coordinates of a point.
+     * Access using array [ . ] notation.
      */
     struct Point
     {
@@ -26,30 +30,30 @@ namespace TFEM
         double coords[2];
 
     public:
+        /**
+         * For i = 0 or 1, return the x or y coordinate of the point respectively.
+         */
         KOKKOS_INLINE_FUNCTION double &operator[](int i)
         {
             return coords[i];
         }
     };
 
+    /**
+     * A struct containing the id's of the points at the end of each edge. IDs are
+     * in the context of the original mesh this edge belongs to.
+     *
+     * Access using array [ . ] notation.
+     */
     struct Edge
     {
     private:
         pointID points[2];
 
     public:
-        KOKKOS_INLINE_FUNCTION pointID &operator[](int i)
-        {
-            return points[i];
-        }
-    };
-
-    struct Region
-    {
-    private:
-        pointID points[3];
-
-    public:
+        /**
+         * For i = 0 or 1, return the ID of the point at the corresponding endpoint of this edge.
+         */
         KOKKOS_INLINE_FUNCTION pointID &operator[](int i)
         {
             return points[i];
@@ -57,10 +61,33 @@ namespace TFEM
     };
 
     /**
-     * Handles the input mesh file as a collection of views. Since different view types may be required
-     * (in particular for different execution spaces), template off of them.
+     * A struct containing the id's of the points that make up the vertices of a triangular
+     * mesh region. IDs are in the context of the original mesh.
      *
-     * The templating here is awkward and not very indicative of what it wants: use the predefined DeviceMesh, mostly.
+     * Access using array [ . ] notation.
+     */
+    struct Region
+    {
+    private:
+        pointID points[3];
+
+    public:
+        /**
+         * For i in [0, 2], return the ID of the point at the corresponding vertex.
+         */
+        KOKKOS_INLINE_FUNCTION pointID &operator[](int i)
+        {
+            return points[i];
+        }
+    };
+
+    /**
+     * Represents a mesh as a list of points, edges, and regions. Also contains information
+     * on the boundary edges (grouped in segments) and boundary points. Typically, create
+     * this mesh by calling "load_meshes_from_grd_file".
+     *
+     * Templates on various view types to accomodate different execution spaces and memory
+     * access patterns. All views should be accessible from the same space.
      */
     template <class PointView, class EdgeView, class RegionView>
     class Mesh
@@ -72,8 +99,8 @@ namespace TFEM
         static_assert(Kokkos::is_view_v<EdgeView>, "EdgeView must be kokkos view");
         static_assert(Kokkos::is_view_v<RegionView>, "RegionView must be kokkos view");
         using MemSpace = typename PointView::memory_space;
-        static_assert(Kokkos::SpaceAccessibility<MemSpace, typename EdgeView::memory_space>::assignable);
-        static_assert(Kokkos::SpaceAccessibility<MemSpace, typename RegionView::memory_space>::assignable);
+        static_assert(Kokkos::SpaceAccessibility<MemSpace, typename EdgeView::memory_space>::accessible);
+        static_assert(Kokkos::SpaceAccessibility<MemSpace, typename RegionView::memory_space>::accessible);
         static_assert(std::is_same_v<typename PointView::data_type, Point *>, "PointView must be array of points");
         static_assert(std::is_same_v<typename EdgeView::data_type, Edge *>, "EdgeView must be array of edges");
         static_assert(std::is_same_v<typename RegionView::data_type, Region *>, "RegionView must be array of regions");
@@ -83,28 +110,37 @@ namespace TFEM
         template <class X, class Y, class Z>
         friend class Mesh;
 
-    public:
-        // Create a host mirror specialization for each specialization.
-        typedef Mesh<typename PointView::HostMirror, typename EdgeView::HostMirror, typename RegionView::HostMirror> HostMirrorMesh;
-
-    protected:
-        pointID n_points;
+        // Mesh size counts
+        int n_points;
         int n_edges;
         int n_regions;
 
     public:
+        // Create a host mirror specialization for each specialization.
+        typedef Mesh<typename PointView::HostMirror, typename EdgeView::HostMirror, typename RegionView::HostMirror> HostMirrorMesh;
+
         // Main buffers
         PointView points;
         EdgeView edges;
         RegionView regions;
         int n_boundary_points;
 
-        // Use CSR rowmap format to store IDs of boundary edges
+
+        /**
+         * Use a CSR-style datastructure to create a list of boundary edges, grouped into segments
+         * as identified in the original mesh.
+         *
+         * If the segment grouping is uninmportant, a simple list of boundary edges is stored on
+         * boundary_edges.edges
+         */
         using BoundaryEdgeMap = Kokkos::StaticCrsGraph<int, typename EdgeView::execution_space>;
         BoundaryEdgeMap boundary_edges;
 
+        /**
+         * An array of boolean flags, on for each point in the mesh. The flag is true iff
+         * the point lies on a boundary edge.
+         */
         using BoundaryPointIndicator = Kokkos::View<bool *, typename EdgeView::execution_space>;
-        // true if boundary point, false otherwise
         BoundaryPointIndicator boundary_points;
 
         /**
@@ -113,7 +149,8 @@ namespace TFEM
         Mesh() = default;
 
         /**
-         * Creates a mesh of given dimensions.
+         * Creates a mesh of given dimensions. Does not do much further initialization:
+         * most of this is done externally in "load_meshes_from_grd_file"
          */
         Mesh(int n_points, int n_edges, int n_regions)
             : n_points(n_points),
@@ -133,7 +170,7 @@ namespace TFEM
 
         /**
          * Creates a copy of the mesh with all primary views accessible from the host. Does not
-         * copy or initialize the edge boundaries, since they have some initialization weirdness.
+         * copy or initialize the edge boundaries or points, since they have some initialization weirdness.
          *
          * Does NOT perform a deep copy- do manually or call src_mesh.deep_copy_all_to(dest_mesh)
          *
@@ -209,6 +246,13 @@ namespace TFEM
      *    <edge_id>: <start_pt_id> <end_pt_id>
      *  Next must follow nr lines of:
      *    <reg_id>: <pt1_id> <pt2_id> <pt3_id>
+     *  Afterwards we parse the boundary segments and edges:
+     *    nebd: <num_edge_segments>
+     *  For each boundary segment, parse the edges:
+     *    idnum: <segment_id>
+     *    number: <n_edges_in_segment>
+     *  Followed by n_edges_in_segment lines of
+     *    <segment_edge_index>: <edge_id>
      *  Lines after can have any contents.
      *  Left-hand side ID's should be in ascending order.
      *  (Anything in <> is replaced with its value- the file does not include angle brackets)
@@ -273,7 +317,6 @@ namespace TFEM
          */
         auto color_member_ids(int color)
         {
-            // TODO wrote this to test that things break
             return Kokkos::subview(color_ids, color_endpoints(color));
         }
 

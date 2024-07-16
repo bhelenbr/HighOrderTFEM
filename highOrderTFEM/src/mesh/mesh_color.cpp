@@ -12,16 +12,20 @@ using namespace TFEM;
 
 MeshColorMap::MeshColorMap(DeviceMesh &mesh)
 {
+    // constructor activities placed in a separate function since to
+    // call lambdas on a GPU, the nvidia compiler wants them to be located
+    // inside of a function inside of a public scope.
+    // Aparently the constructor doesn't qualify.
     do_color(mesh);
 }
 
 void MeshColorMap::do_color(DeviceMesh &mesh)
 {
-    // Call the bipartite row coloring to assign different
-    // colors to any element sharing a neighboring vertex,
-    // as described at:
+    // Call the bipartite row coloring kernel to assign different colors to any element sharing a
+    // neighboring vertex, as described at:
     // https://github.com/kokkos/kokkos-kernels/wiki/D2-Graph-Coloring#bipartite-graph-row-coloring
 
+    // Some type defs that the kernel needs
     using RowMapType = Kokkos::View<int *>;
     using IndexArrayType = Kokkos::View<pointID *>;
     using HandleType = KokkosKernels::Experimental::KokkosKernelsHandle<
@@ -32,17 +36,15 @@ void MeshColorMap::do_color(DeviceMesh &mesh)
         Kokkos::DefaultExecutionSpace::memory_space,
         Kokkos::DefaultExecutionSpace::memory_space>;
 
-    // row entries view. Almost identical to the original elements-to-vertex view, except has one greater
-    // extent and I don't want to fiddle with memory layout bugs, so we make a new array.
+    // Initialize the views
     int n_elements = mesh.region_count();
-    RowMapType row_start_map("Row starts", n_elements + 1);
+    RowMapType row_start_map("Row starts", n_elements + 1);         // +1 required by kernel
     IndexArrayType indices_array("Column indices", 3 * n_elements); // a region is a triangle of 3 points
 
     // Populate the array with the points to color on
     Kokkos::parallel_for(row_start_map.extent(0), KOKKOS_LAMBDA(int i) {
         if(i >= n_elements){
-            // per design of the kokkos_kernels function, this must
-            // store the extent of the indices array
+            // per design of the kokkos_kernels function, this must store the extent of the indices/entries array
             row_start_map(i) = indices_array.extent(0);
         } else {
             row_start_map(i) = 3 * i;
@@ -57,6 +59,7 @@ void MeshColorMap::do_color(DeviceMesh &mesh)
     handle.create_distance2_graph_coloring_handle();
     KokkosGraph::Experimental::bipartite_color_rows(&handle, mesh.region_count(), mesh.point_count(), row_start_map, indices_array);
 
+    // Fetch kernel results
     int n_colors = handle.get_distance2_graph_coloring_handle()->get_num_colors();
     this->n_colors = n_colors; // We need to keep a local reference of n_colors due to lambda capture
     auto region_to_colors = handle.get_distance2_graph_coloring_handle()->get_vertex_colors();
@@ -66,16 +69,16 @@ void MeshColorMap::do_color(DeviceMesh &mesh)
 
     // Colors indexes by region and gives the color. We want to pick a color
     // and iterate over the regions, requiring some restructuring.
-    // This can be done in two parallel passes over the original color array.
-    // Keep views as separate from the object fields until the end to prevent
-    // lambda capture of the "this" pointer.
+    // This can be done in two parallel passes over the original color array,
+    // one to find where the starts of each color section should be and one to place
+    // each region within its section.
     Kokkos::View<int *> color_counts("Color counts", n_colors);
     Kokkos::View<int *> color_index("Color index", n_colors + 1);
     Kokkos::View<Region *> color_members("Color members", region_to_colors.extent(0));
     Kokkos::View<int *> color_member_ids("Color member_ids", region_to_colors.extent(0));
 
     // Step 1: count how many items are in each color.
-    // Atomic add should be a fairly safe function to use for 32-bit integers.
+    // Atomic increment should be a fairly safe operation for most hardware.
     Kokkos::parallel_for(mesh.region_count(), KOKKOS_LAMBDA(int i) {
         int color = region_to_colors(i) - 1;
         Kokkos::atomic_increment(&color_counts(color)); });
@@ -83,7 +86,8 @@ void MeshColorMap::do_color(DeviceMesh &mesh)
 
     // Step 2: cumulative sum to get start points.
     // A parallel for with 1 iteration is a bit awkward, but is a simple way
-    // to run something in the device execution space.
+    // to run something in the device execution space, and we expect the number
+    // of colors to be small.
     Kokkos::parallel_for(1, KOKKOS_LAMBDA(int _) {
         for(int c = 0; c < n_colors; c++){
             color_index[c + 1] = color_index[c] + color_counts[c];
@@ -126,7 +130,8 @@ int MeshColorMap::member_count(int color)
  * Runs a check and prints to the console that a coloring is a correct. A coloring is correct if
  * every region in the mesh has exactly one color, and no regions within a single color share a point.
  *
- * In a more mature project this would be part of a test suite instead.
+ * In a more mature project this would be part of a test suite instead. Has no real value for an
+ * active simulation.
  */
 void TFEM::validate_mesh_coloring(typename DeviceMesh::HostMirrorMesh &mesh, MeshColorMap &coloring)
 {

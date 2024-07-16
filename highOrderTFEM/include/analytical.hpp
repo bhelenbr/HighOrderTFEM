@@ -10,11 +10,18 @@
 
 namespace TFEM
 {
+    /**
+     * Namespace for closed-form solutions to test against and use for initial conditions.
+     */
     namespace Analytical
     {
 
         /**
          * Represents a single term in a solution that is a linear combination of terms c_i F_(nx_i, ny_i) (...)
+         *
+         * coef - scalar magnitude of the term
+         * nx - Solutions are typically indexed in two dimensions. This is the x index of the term
+         * ny - y index of the term
          */
         struct Term
         {
@@ -23,6 +30,10 @@ namespace TFEM
             int ny;
         };
 
+        /**
+         * Term specific to a zero-boundary rectangle. Each ZeroBoundaryTerm represents:
+         *      amplitude * exp(coef_t * t) * sin(coef_x * x) * sin(coef_y * y)
+         */
         struct ZeroBoundaryTerm
         {
             double amplitude;
@@ -32,14 +43,19 @@ namespace TFEM
         };
 
         /**
-         * Analytical solutions to a rectangular region where boundaries are held to 0
+         * Analytical solutions to a rectangular region where boundaries are held to 0, which
+         * are in the form of a sum over terms that look like:
+         *
+         * a * exp(-k * t * (bx^2 + by^2)) * sin(bx * x) * sin(by * y)
+         *
+         * Templated on view type to allow for placement on device or host.
          */
         template <class TermView = Kokkos::View<ZeroBoundaryTerm *>>
         class ZeroBoundary
         {
         protected:
             TermView terms;
-            double x_shift;
+            double x_shift; // rectangle doesn't always start at 0, so shift the coordinates
             double y_shift;
 
         public:
@@ -55,7 +71,8 @@ namespace TFEM
                 : x_shift(x_start),
                   y_shift(y_start)
             {
-                // Assemble terms on host. Shouldn't be too many so not bothering with parallelism
+                // Translate generic index-based terms to specific coefficients
+                // There shouldn't be too many terms so not bothering with parallelism
                 terms = TermView("analytic solution terms", solution_terms.size());
                 auto terms_mirror = Kokkos::create_mirror_view(terms);
 
@@ -71,13 +88,16 @@ namespace TFEM
                         lambda_y};                                  // y
                 }
 
-                // copy host to device
+                // The terms were assembled on the host, while the destination buffer
+                // might be on the device. Copy over.
                 Kokkos::deep_copy(terms, terms_mirror);
             }
 
             /**
-             * Computes the value of the solution at the given point and time. Must be
-             * called somewhere where the templated exection space is
+             * Computes the value of the solution at the given point and time.
+             * 
+             * Make sure the calling execution space has access to the memory 
+             * space where the templated view resides.
              */
             KOKKOS_INLINE_FUNCTION double
             operator()(double x, double y, double t) const

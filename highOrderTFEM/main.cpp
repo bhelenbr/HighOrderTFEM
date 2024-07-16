@@ -27,24 +27,6 @@ int main(int argc, char *argv[])
         bool fuzz = false;
         TFEM::load_meshes_from_grd_file(argv[1], device_mesh, host_mesh, fuzz);
 
-        // Print mesh debug info
-        std::cout << "Mesh size: " << host_mesh.point_count()
-                  << " " << host_mesh.edge_count()
-                  << " " << host_mesh.region_count()
-                  << std::endl;
-        std::cout << "Mesh boundary segments:" << std::endl;
-        for (int seg = 0; seg < host_mesh.boundary_edges.numRows(); seg++)
-        {
-            std::cout << "\t Seg " << (seg + 1) << ": ";
-            auto segment = host_mesh.boundary_edges.rowConst(seg);
-            for (int i = 0; i < segment.length; i++)
-            {
-                std::cout << " " << segment(i);
-            }
-            std::cout << std::endl;
-        }
-        std::cout << "Number of boundary edges: " << host_mesh.boundary_edge_count() << " Number of boundary points: " << host_mesh.n_boundary_points << std::endl;
-
         // Analytic solution and output writer
         // Create an analytical solution to test against
         double k = 1E-2;
@@ -59,7 +41,7 @@ int main(int argc, char *argv[])
         // Find element coloring.
         TFEM::MeshColorMap coloring(device_mesh);
 
-        // Print coloring debug info
+        // Print coloring debug info, since it's nondeterministic and affects runtime
         std::cout << "Colored into " << coloring.color_count() << " partitions" << std::endl;
         std::cout << "Sizes:";
         for (int color = 0; color < coloring.color_count(); color++)
@@ -68,7 +50,6 @@ int main(int argc, char *argv[])
             assert(coloring.color_member_ids_host(color).extent(0) == coloring.member_count(color));
         }
         std::cout << std::endl;
-        TFEM::validate_mesh_coloring(host_mesh, coloring);
 
         TFEM::ColoredElementScatterAdd scatter_pattern(coloring);
 
@@ -106,7 +87,6 @@ int main(int argc, char *argv[])
 
         Kokkos::deep_copy(point_weight_mirror, solver.current_point_weights);
 
-        std::cout << "Final point 0 weight: " << std::setprecision(15) << point_weight_mirror(0) << std::endl;
         std::cout << "10000 step time (s): " << (stop_time - start_time) << std::endl;
     }
     Kokkos::finalize();

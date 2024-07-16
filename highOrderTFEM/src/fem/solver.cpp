@@ -19,37 +19,28 @@ Solver<ScatterPattern>::Solver(DeviceMesh mesh, ScatterPattern pattern, Analytic
       scatter_pattern(pattern),
       boundary(boundary_conditions)
 {
-    // point the readonly buffers to the correct place.
-    // mass matrix readonly set up alongisde mass matrix itself
+    // By assigning the non-const view to the const view, we
+    // essentialy point the const view to the same memory- they
+    // will update in parallel.
     prev_point_weights_readonly = prev_point_weights;
+    point_mass_inv_readonly = point_mass_inv;
     setup_mass_matrix();
     setup_initial_conditions();
     Kokkos::fence();
 }
 
-KOKKOS_INLINE_FUNCTION double det_jacobian(Point pts[3])
-{
-    return 0.25 * ((pts[2][0] - pts[1][0]) * (pts[0][1] - pts[1][1]) - (pts[0][0] - pts[1][0]) * (pts[2][1] - pts[1][1]));
-}
-
 template <typename ScatterPattern>
 void Solver<ScatterPattern>::setup_mass_matrix()
 {
-    // TODO make this legit based on mesh
-    // Right now give dummy scalar of all ones
-
-    auto mesh = this->mesh;
+    // Create local var to avoid capturing the "this" pointer
     auto point_mass_inv = this->point_mass_inv;
-    this->point_mass_inv_readonly = point_mass_inv;
 
-    int num_elems = mesh.region_count();
-    int num_points = mesh.point_count();
-
+    // Dispatch the mass matrix assembly functor to the scatter pattern.
     SolverImpl::MassMatrixFunctor<ScatterPattern> mass_functor(point_mass_inv, mesh, k, dt);
-
     scatter_pattern.distribute_work(mass_functor);
 
-    Kokkos::parallel_for(num_points, KOKKOS_LAMBDA(const int &i) { //
+    // pre-invert the diagonal now to avoid an operation each timestep.
+    Kokkos::parallel_for(mesh.point_count(), KOKKOS_LAMBDA(const int &i) { //
         point_mass_inv(i) = 1 / point_mass_inv(i);
     });
     Kokkos::fence();
@@ -58,13 +49,14 @@ void Solver<ScatterPattern>::setup_mass_matrix()
 template <typename ScatterPattern>
 void Solver<ScatterPattern>::setup_initial_conditions()
 {
-    // Manifest individual variables needed for capture-by-copy
-    auto mesh = this->mesh;
+    // Manifest individual variables needed for capture-by-copy to avoid capturing
+    // the "this" pointer.
+    auto point_coords = this->mesh.points;
     auto current_points = this->current_point_weights;
     auto boundary = this->boundary;
 
     Kokkos::parallel_for(mesh.point_count(), KOKKOS_LAMBDA(int i) {
-        Point p = mesh.points(i);
+        Point p = point_coords(i);
         double x = p[0];
         double y = p[1];
         current_points(i) = boundary(x, y, 0); });
@@ -76,29 +68,29 @@ void Solver<ScatterPattern>::simulate_steps(int n_steps)
     for (int i = 0; i < n_steps; i++)
     {
         n_total_steps++;
-        Kokkos::fence();
         prepare_next_step();
         Kokkos::fence();
         compute_step();
         Kokkos::fence();
         fix_boundary();
+        Kokkos::fence();
     }
 }
 
 template <typename ScatterPattern>
 void Solver<ScatterPattern>::prepare_next_step()
 {
-    // Step one: copy current to previous. Now we can update current,
-    // and it already has the identity term included- we just need to
-    // handle the increments
+    // When we move to the next step, the current state becomes the previous state.
     Kokkos::deep_copy(prev_point_weights, current_point_weights);
 }
 
 template <typename ScatterPattern>
 void Solver<ScatterPattern>::compute_step()
 {
-    auto do_element = create_element_contribution_functor();
-    scatter_pattern.distribute_work(do_element);
+    // Dispatch element-wise contributions. The identity-matrix term already handled
+    // as a precondition to calling this function.
+    SolverImpl::ElementContributionFunctor<ScatterPattern> per_element_functor(current_point_weights, prev_point_weights_readonly, point_mass_inv_readonly, mesh, k, dt);
+    scatter_pattern.distribute_work(per_element_functor);
 }
 
 template <typename ScatterPattern>
@@ -106,13 +98,16 @@ void Solver<ScatterPattern>::fix_boundary()
 {
     auto mesh = this->mesh;
     auto current_points = this->current_point_weights;
-    // For now, disregard how edges are segmented and set to 0.
+    // Set all points on a boundary edge to 0.
     Kokkos::parallel_for(mesh.boundary_edge_count(), KOKKOS_LAMBDA(int i) {
         auto edge_id = mesh.boundary_edges.entries(i);
         auto e = mesh.edges(edge_id);
-
-        current_points(e[0]) = 0; // Assume that the boundary is closed and uniformly directed, so this hits every boundary point
-    });
+        
+        // This will likely double-set every boundary point, but is more robust
+        // against errors like one edge of a segment being reversed and a point
+        // not getting set at all.
+        current_points(e[0]) = 0; 
+        current_points(e[1]) = 0; });
 }
 
 template <typename ScatterPattern>
@@ -122,38 +117,41 @@ double Solver<ScatterPattern>::measure_error()
     auto mesh = this->mesh;
     auto current_points = this->current_point_weights;
     auto analytic = this->boundary;
-    double all_result = 0;
+    double interior_result = 0;
     Kokkos::parallel_reduce(mesh.point_count(), KOKKOS_LAMBDA(const int &i, double &err_sum) {
         if(!mesh.boundary_points(i)) { // only compute error for interior
             Point p = mesh.points(i);
             double numerical_value = current_points(i);
             double analytic_value = analytic(p[0], p[1], t);
-            err_sum += pow(analytic_value - numerical_value, 2);} }, all_result);
+            err_sum += pow(analytic_value - numerical_value, 2);} }, interior_result);
 
     // Boundary points are held to correct, so they contribute 0 error
-    // but don't really give a good idea of whats going on in the interior.
-    // Measure only interior points.
-    return (all_result) / (mesh.point_count() - mesh.n_boundary_points);
+    // and don't really give a good idea of whats going on in the interior.
+    // Measure error on interior points only.
+    return (interior_result) / (mesh.point_count() - mesh.n_boundary_points);
 }
 
-template <typename ScatterPattern>
-SolverImpl::ElementContributionFunctor<ScatterPattern> Solver<ScatterPattern>::create_element_contribution_functor()
+KOKKOS_INLINE_FUNCTION double det_jacobian(Point pts[3])
 {
-    return SolverImpl::ElementContributionFunctor<ScatterPattern>(current_point_weights, prev_point_weights_readonly, point_mass_inv_readonly, mesh, k, dt);
+    return 0.25 * ((pts[2][0] - pts[1][0]) * (pts[0][1] - pts[1][1]) - (pts[0][0] - pts[1][0]) * (pts[2][1] - pts[1][1]));
 }
 
 template <typename ScatterPattern>
 KOKKOS_INLINE_FUNCTION void SolverImpl::MassMatrixFunctor<ScatterPattern>::operator()(Region element) const
 {
-
+    // Fetch coordinates for the element
     Point pts[3];
     for (int j = 0; j < 3; j++)
     {
         pts[j] = mesh.points(element[j]);
     }
+
     // compute |J| for this triangle
     double jacob = det_jacobian(pts);
-    // compute mass-lumped entries for the inverse of the mass matrix
+
+    // compute mass-lumped entries for the inverse of the mass matrix.
+    // The contribution is the sum of the main |J|/3 diagonal plus two |J|/6 off-diagonals for this element,
+    // and the contribution is the same for each point. (In the linear case).
     double c = (jacob * 2 / 3);
     for (int j = 0; j < 3; j++)
     {
@@ -164,45 +162,48 @@ KOKKOS_INLINE_FUNCTION void SolverImpl::MassMatrixFunctor<ScatterPattern>::opera
 template <typename ScatterPattern>
 KOKKOS_INLINE_FUNCTION void SolverImpl::ElementContributionFunctor<ScatterPattern>::operator()(Region element) const
 {
+    // Fetch coordinates for the element
     Point pts[3];
     for (int j = 0; j < 3; j++)
     {
         pts[j] = mesh.points(element[j]);
     }
+
     // compute |J| for this triangle
     double jacob = det_jacobian(pts);
+
     // compute entries in the vector S*c^n, where S is the stiffness matrix and c^n is the vector of coefficients from the n-th time step
+    // Calculate change-of-variable partial derivatives
     double dx_de = 0.5 * (pts[2][0] - pts[1][0]); // point 2 switched with 0
     double dx_dn = 0.5 * (pts[0][0] - pts[1][0]); // ""
     double dy_de = 0.5 * (pts[2][1] - pts[1][1]); // ""
     double dy_dn = 0.5 * (pts[0][1] - pts[1][1]); // ""
+    // Calculate gradients
     double du_de = 0.5 * (prev_points(element[2]) - prev_points(element[1]));
     double du_dn = 0.5 * (prev_points(element[0]) - prev_points(element[1]));
     double du_dx = (1 / jacob) * (dy_dn * du_de - dy_de * du_dn);
     double du_dy = (1 / jacob) * (-dx_dn * du_de + dx_de * du_dn);
+    // Based on gradients, calculate interaction
     for (int j = 0; j < 3; j++)
     {
         double dp_dx;
         double dp_dy;
-        if (j == 0)
+        switch (j)
         {
+        case 0:
             dp_dx = (0.5 / jacob) * (-dy_de);
             dp_dy = (0.5 / jacob) * (dx_de);
-        }
-        else if (j == 1)
-        {
+            break;
+        case 1:
             dp_dx = (0.5 / jacob) * (-dy_dn + dy_de);
             dp_dy = (0.5 / jacob) * (dx_dn - dx_de);
-        }
-        else
-        {
+            break;
+        case 2:
             dp_dx = (0.5 / jacob) * (dy_dn);
             dp_dy = (0.5 / jacob) * (-dx_dn);
         }
+
         double c = 2 * jacob * (dp_dx * du_dx + dp_dy * du_dy);
-        // if (element[j] == 15102) {
-        // printf("pts: %d,%d,%d,   dp/dx: %f,   du/dx: %f,   dp_dy: %f,   du_dy: %f,   gradients: %f,   |J|: %f,   c: %f,   mass entry: %f\n\n",element[0],element[1],element[2],dp_dx,du_dx,dp_dy,du_dy,dp_dx * du_dx + dp_dy * du_dy,jacob,c,inv_mass(element[j]));
-        //}
         double contribution = -k * dt * inv_mass(element[j]) * c;
         ScatterPattern::contribute(&new_points(element[j]), contribution);
     }

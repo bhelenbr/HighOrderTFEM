@@ -11,15 +11,14 @@ using namespace std;
 
 std::default_random_engine rnd{std::random_device{}()};
 uniform_real_distribution<double> dist(-1.0, 1.0);
-// Reasonable heuristic for unit circle random
+// Reasonable heuristic for unit circle random. Not quite uniform, since we remap the corners.
 std::pair<double, double> unit_circle_almost_random()
 {
 
     double x = dist(rnd);
     double y = dist(rnd);
 
-    // this will deform the distribution a little bit but
-    // we don't care for our purposes
+    // this will deform the distribution a little bit but unimportant for our use case.
     double rad = sqrt(pow(x, 2) + pow(y, 2));
     if (rad > 1.0)
     {

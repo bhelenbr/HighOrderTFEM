@@ -11,6 +11,8 @@ namespace TFEM
 {
     /*
      * Type trait to get the read-only view type corresponding to the given type.
+     * 
+     * This may already exist within Kokkos, but I couldn't find it.
      */
     template <typename>
     struct constify_view
