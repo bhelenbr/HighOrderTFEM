@@ -8,7 +8,7 @@
 
 #include <Kokkos_Core.hpp>
 #include <mesh.hpp>
-#include <fem.hpp>
+#include <solver.hpp>
 #include <analytical.hpp>
 #include "scatter_add_pattern.hpp"
 
