@@ -8,20 +8,28 @@
 #include "mesh.hpp"
 #include "type_magic.hpp"
 #include "analytical.hpp"
+#include "scatter_add_pattern.hpp"
 
 namespace TFEM
 {
 
     namespace SolverImpl
     {
+        template <typename ScatterPattern>
         struct ElementContributionFunctor;
+
+        template <typename ScatterPattern>
+        struct MassMatrixFunctor;
     }
     class SolutionWriter;
 
+    template <typename ScatterPattern>
     class Solver
     {
         friend class SolutionWriter;
-        friend class SolverImpl::ElementContributionFunctor;
+
+        friend class SolverImpl::ElementContributionFunctor<ScatterPattern>;
+        friend class SolverImpl::MassMatrixFunctor<ScatterPattern>;
 
     protected:
         // Stores 1/diagonals (diagonals^-1) for the lumped diagonal mass matrix.
@@ -32,7 +40,7 @@ namespace TFEM
 
         // Mesh and coloring
         DeviceMesh mesh;
-        MeshColorMap element_coloring;
+        ScatterPattern scatter_pattern;
         Analytical::ZeroBoundary<> boundary;
 
         // Parameters
@@ -88,7 +96,7 @@ namespace TFEM
          *
          * Creates a functor that can be called to process each element.
          */
-        SolverImpl::ElementContributionFunctor create_element_contribution_functor();
+        SolverImpl::ElementContributionFunctor<ScatterPattern> create_element_contribution_functor();
 
     public:
         // This stuff was intended to be public, rather than being forced to make it accessible to
@@ -101,7 +109,7 @@ namespace TFEM
         PointWeightBuffer prev_point_weights;
         ConstPointWeightBuffer prev_point_weights_readonly;
 
-        Solver(DeviceMesh, MeshColorMap, Analytical::ZeroBoundary<>, double timestep, double k);
+        Solver(DeviceMesh, ScatterPattern, Analytical::ZeroBoundary<>, double timestep, double k);
 
         /**
          * Runs the next n steps of the simulation
@@ -126,18 +134,20 @@ namespace TFEM
         // Functor called once with each element to update its contribution.
         // Can assume that each point and edge for each element are not being
         // touched by another thread.
+        template <typename ScatterPattern>
         struct ElementContributionFunctor
         {
-            Solver::PointWeightBuffer new_points;
-            Solver::ConstPointWeightBuffer prev_points;
-            Solver::ConstInvMassMatrix inv_mass;
+            using SolverT = Solver<ScatterPattern>;
+            typename SolverT::PointWeightBuffer new_points;
+            typename SolverT::ConstPointWeightBuffer prev_points;
+            typename SolverT::ConstInvMassMatrix inv_mass;
             DeviceMesh mesh;
             double k;
             double dt;
 
-            ElementContributionFunctor(Solver::PointWeightBuffer new_points,
-                                       Solver::ConstPointWeightBuffer prev_points,
-                                       Solver::ConstInvMassMatrix inv_mass,
+            ElementContributionFunctor(typename SolverT::PointWeightBuffer new_points,
+                                       typename SolverT::ConstPointWeightBuffer prev_points,
+                                       typename SolverT::ConstInvMassMatrix inv_mass,
                                        DeviceMesh mesh,
                                        double k, double dt)
                 : new_points(new_points),
@@ -156,7 +166,36 @@ namespace TFEM
              */
             KOKKOS_INLINE_FUNCTION void operator()(Region element) const;
         };
-    }
+
+        // Functor called once per element to assemble the mass matrix
+        template <typename ScatterPattern>
+        struct MassMatrixFunctor
+        {
+            using SolverT = Solver<ScatterPattern>;
+
+            typename SolverT::InvMassMatrix inv_mass;
+            DeviceMesh mesh;
+            double k;
+            double dt;
+
+            MassMatrixFunctor(typename SolverT::InvMassMatrix inv_mass,
+                              DeviceMesh mesh,
+                              double k, double dt)
+                : inv_mass(inv_mass),
+                  mesh(mesh),
+                  k(k),
+                  dt(dt)
+            { // Pretty much just the initializer list
+            }
+
+            /**
+             * Adds the partial contributions of an element to all pertinent basis functions.
+             *
+             * TODO: put the magic here!
+             */
+            KOKKOS_INLINE_FUNCTION void operator()(Region element) const;
+        };
+    } // namespace SolverImpl
 
     class SolutionWriter
     {
@@ -217,6 +256,9 @@ namespace TFEM
             out_file << "]}";
         }
     };
-}
+
+    extern template class Solver<ColoredElementScatterAdd>;
+    extern template class Solver<AtomicElementScatterAdd>;
+} // namespace TFEM
 
 #endif

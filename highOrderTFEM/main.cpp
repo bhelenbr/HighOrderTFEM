@@ -1,10 +1,16 @@
 #include <iostream>
+#include <iomanip>
+
+// When use_color is defined as true, use a coloring algorithm. Otherwise
+// rely on atomic operations for scatter-add.
+#define use_color false
+// # define use_color false
 
 #include <Kokkos_Core.hpp>
 #include <mesh.hpp>
 #include <fem.hpp>
 #include <analytical.hpp>
-#include <iomanip>
+#include "scatter_add_pattern.hpp"
 
 int main(int argc, char *argv[])
 {
@@ -39,6 +45,17 @@ int main(int argc, char *argv[])
         }
         std::cout << "Number of boundary edges: " << host_mesh.boundary_edge_count() << " Number of boundary points: " << host_mesh.n_boundary_points << std::endl;
 
+        // Analytic solution and output writer
+        // Create an analytical solution to test against
+        double k = 1E-2;
+        double dt = 1E-5;
+        std::vector<TFEM::Analytical::Term> terms;
+        terms.push_back({1.0, 1, 1});
+        terms.push_back({2.0, 1, 3});
+        TFEM::Analytical::ZeroBoundary<> analytical(k, -1.0, 2.0, -1.0, 2.0, terms);
+
+// Depending on macros, either create a coloring-based or atomic-based solver.
+#if use_color
         // Find element coloring.
         TFEM::MeshColorMap coloring(device_mesh);
 
@@ -53,18 +70,17 @@ int main(int argc, char *argv[])
         std::cout << std::endl;
         TFEM::validate_mesh_coloring(host_mesh, coloring);
 
-        // Create an analytical solution to test against
-        double k = 1E-2;
-        double dt = 1E-5;
-        std::vector<TFEM::Analytical::Term> terms;
-        terms.push_back({1.0, 1, 1});
-        terms.push_back({2.0, 1, 3});
-        TFEM::Analytical::ZeroBoundary<> analytical(k, -1.0, 2.0, -1.0, 2.0, terms);
+        TFEM::ColoredElementScatterAdd scatter_pattern(coloring);
 
-        // Create solver and output writer
+        TFEM::Solver<TFEM::ColoredElementScatterAdd> solver(device_mesh, scatter_pattern, analytical, dt, k);
+#else  // above: use_color = true. below: use_color = false
+        TFEM::AtomicElementScatterAdd scatter_pattern(device_mesh);
+
+        TFEM::Solver<TFEM::AtomicElementScatterAdd> solver(device_mesh, scatter_pattern, analytical, dt, k);
+#endif // end of use_color if-else
+
+        // Initialize writer
         TFEM::SolutionWriter writer("out/slices.json", host_mesh);
-        TFEM::Solver solver(device_mesh, coloring, analytical, dt, k);
-
         auto point_weight_mirror = Kokkos::create_mirror(solver.current_point_weights);
         Kokkos::deep_copy(point_weight_mirror, solver.current_point_weights);
         writer.add_slice(point_weight_mirror);

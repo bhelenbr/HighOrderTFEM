@@ -3,10 +3,12 @@
 #include "fem.hpp"
 #include "analytical.hpp"
 #include <iostream>
+#include "scatter_add_pattern.hpp"
 
 using namespace TFEM;
 
-Solver::Solver(DeviceMesh mesh, MeshColorMap color, Analytical::ZeroBoundary<> boundary_conditions, double timestep, double k)
+template <typename ScatterPattern>
+Solver<ScatterPattern>::Solver(DeviceMesh mesh, ScatterPattern pattern, Analytical::ZeroBoundary<> boundary_conditions, double timestep, double k)
     : mesh(mesh),
       dt(timestep),
       n_total_steps(0),
@@ -14,7 +16,7 @@ Solver::Solver(DeviceMesh mesh, MeshColorMap color, Analytical::ZeroBoundary<> b
       current_point_weights("Current Point Weights", mesh.point_count()),
       prev_point_weights("Prev Point Weights", mesh.point_count()),
       point_mass_inv("Inverse Point Masses", mesh.point_count()),
-      element_coloring(color),
+      scatter_pattern(pattern),
       boundary(boundary_conditions)
 {
     // point the readonly buffers to the correct place.
@@ -30,7 +32,8 @@ KOKKOS_INLINE_FUNCTION double det_jacobian(Point pts[3])
     return 0.25 * ((pts[2][0] - pts[1][0]) * (pts[0][1] - pts[1][1]) - (pts[0][0] - pts[1][0]) * (pts[2][1] - pts[1][1]));
 }
 
-void Solver::setup_mass_matrix()
+template <typename ScatterPattern>
+void Solver<ScatterPattern>::setup_mass_matrix()
 {
     // TODO make this legit based on mesh
     // Right now give dummy scalar of all ones
@@ -42,26 +45,9 @@ void Solver::setup_mass_matrix()
     int num_elems = mesh.region_count();
     int num_points = mesh.point_count();
 
-    for (int color = 0; color < element_coloring.color_count(); color++)
-    {
-        auto color_elements = element_coloring.color_member_regions(color);
-        Kokkos::parallel_for(color_elements.extent(0), KOKKOS_LAMBDA(const int &i) {
-            Region element = color_elements(i);
-            Point pts[3];
-            for (int j = 0; j < 3; j++)
-            {
-                pts[j] = mesh.points(element[j]);
-            }
-            // compute |J| for this triangle
-            double jacob = det_jacobian(pts);
-            // compute mass-lumped entries for the inverse of the mass matrix
-            double c = (jacob * 2 / 3);
-            for (int j = 0; j < 3; j++)
-            {
-                point_mass_inv(element[j]) += c;
-            } });
-        Kokkos::fence();
-    }
+    SolverImpl::MassMatrixFunctor<ScatterPattern> mass_functor(point_mass_inv, mesh, k, dt);
+
+    scatter_pattern.distribute_work(mass_functor);
 
     Kokkos::parallel_for(num_points, KOKKOS_LAMBDA(const int &i) { //
         point_mass_inv(i) = 1 / point_mass_inv(i);
@@ -69,11 +55,9 @@ void Solver::setup_mass_matrix()
     Kokkos::fence();
 }
 
-// DUMMY
-void Solver::setup_initial_conditions()
+template <typename ScatterPattern>
+void Solver<ScatterPattern>::setup_initial_conditions()
 {
-    // make up some bogus initial conditions
-
     // Manifest individual variables needed for capture-by-copy
     auto mesh = this->mesh;
     auto current_points = this->current_point_weights;
@@ -86,7 +70,8 @@ void Solver::setup_initial_conditions()
         current_points(i) = boundary(x, y, 0); });
 }
 
-void Solver::simulate_steps(int n_steps)
+template <typename ScatterPattern>
+void Solver<ScatterPattern>::simulate_steps(int n_steps)
 {
     for (int i = 0; i < n_steps; i++)
     {
@@ -100,7 +85,8 @@ void Solver::simulate_steps(int n_steps)
     }
 }
 
-void Solver::prepare_next_step()
+template <typename ScatterPattern>
+void Solver<ScatterPattern>::prepare_next_step()
 {
     // Step one: copy current to previous. Now we can update current,
     // and it already has the identity term included- we just need to
@@ -108,21 +94,15 @@ void Solver::prepare_next_step()
     Kokkos::deep_copy(prev_point_weights, current_point_weights);
 }
 
-void Solver::compute_step()
+template <typename ScatterPattern>
+void Solver<ScatterPattern>::compute_step()
 {
     auto do_element = create_element_contribution_functor();
-    for (int color = 0; color < element_coloring.color_count(); color++)
-    {
-        auto elements = element_coloring.color_member_regions(color);
-
-        Kokkos::parallel_for(elements.extent(0), KOKKOS_LAMBDA(int i) {
-            Region element = elements(i);
-            do_element(element); });
-        Kokkos::fence();
-    }
+    scatter_pattern.distribute_work(do_element);
 }
 
-void Solver::fix_boundary()
+template <typename ScatterPattern>
+void Solver<ScatterPattern>::fix_boundary()
 {
     auto mesh = this->mesh;
     auto current_points = this->current_point_weights;
@@ -135,7 +115,8 @@ void Solver::fix_boundary()
     });
 }
 
-double Solver::measure_error()
+template <typename ScatterPattern>
+double Solver<ScatterPattern>::measure_error()
 {
     double t = time();
     auto mesh = this->mesh;
@@ -155,12 +136,33 @@ double Solver::measure_error()
     return (all_result) / (mesh.point_count() - mesh.n_boundary_points);
 }
 
-SolverImpl::ElementContributionFunctor Solver::create_element_contribution_functor()
+template <typename ScatterPattern>
+SolverImpl::ElementContributionFunctor<ScatterPattern> Solver<ScatterPattern>::create_element_contribution_functor()
 {
-    return SolverImpl::ElementContributionFunctor(current_point_weights, prev_point_weights_readonly, point_mass_inv_readonly, mesh, k, dt);
+    return SolverImpl::ElementContributionFunctor<ScatterPattern>(current_point_weights, prev_point_weights_readonly, point_mass_inv_readonly, mesh, k, dt);
 }
 
-KOKKOS_INLINE_FUNCTION void SolverImpl::ElementContributionFunctor::operator()(Region element) const
+template <typename ScatterPattern>
+KOKKOS_INLINE_FUNCTION void SolverImpl::MassMatrixFunctor<ScatterPattern>::operator()(Region element) const
+{
+
+    Point pts[3];
+    for (int j = 0; j < 3; j++)
+    {
+        pts[j] = mesh.points(element[j]);
+    }
+    // compute |J| for this triangle
+    double jacob = det_jacobian(pts);
+    // compute mass-lumped entries for the inverse of the mass matrix
+    double c = (jacob * 2 / 3);
+    for (int j = 0; j < 3; j++)
+    {
+        ScatterPattern::contribute(&inv_mass(element[j]), c);
+    }
+}
+
+template <typename ScatterPattern>
+KOKKOS_INLINE_FUNCTION void SolverImpl::ElementContributionFunctor<ScatterPattern>::operator()(Region element) const
 {
     Point pts[3];
     for (int j = 0; j < 3; j++)
@@ -198,9 +200,14 @@ KOKKOS_INLINE_FUNCTION void SolverImpl::ElementContributionFunctor::operator()(R
             dp_dy = (0.5 / jacob) * (-dx_dn);
         }
         double c = 2 * jacob * (dp_dx * du_dx + dp_dy * du_dy);
-        //if (element[j] == 15102) {
-          //printf("pts: %d,%d,%d,   dp/dx: %f,   du/dx: %f,   dp_dy: %f,   du_dy: %f,   gradients: %f,   |J|: %f,   c: %f,   mass entry: %f\n\n",element[0],element[1],element[2],dp_dx,du_dx,dp_dy,du_dy,dp_dx * du_dx + dp_dy * du_dy,jacob,c,inv_mass(element[j]));
+        // if (element[j] == 15102) {
+        // printf("pts: %d,%d,%d,   dp/dx: %f,   du/dx: %f,   dp_dy: %f,   du_dy: %f,   gradients: %f,   |J|: %f,   c: %f,   mass entry: %f\n\n",element[0],element[1],element[2],dp_dx,du_dx,dp_dy,du_dy,dp_dx * du_dx + dp_dy * du_dy,jacob,c,inv_mass(element[j]));
         //}
-        new_points(element[j]) += -k * dt * inv_mass(element[j]) * c;
+        double contribution = -k * dt * inv_mass(element[j]) * c;
+        ScatterPattern::contribute(&new_points(element[j]), contribution);
     }
 }
+
+// We need to specify what classes we might be using so the linker doesn't get mad
+template class Solver<ColoredElementScatterAdd>;
+template class Solver<AtomicElementScatterAdd>;
