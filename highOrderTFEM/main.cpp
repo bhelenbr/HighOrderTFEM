@@ -76,11 +76,11 @@ int main(int argc, char *argv[])
         for (int i = 0; i < 10; i++)
         {
             solver.simulate_steps(1000);
-            // Kokkos::deep_copy(point_weight_mirror, solver.current_point_weights);
-            // Kokkos::fence();
-            // std::cout << "Mean square error: " << solver.measure_error() << std::endl;
+            Kokkos::deep_copy(point_weight_mirror, solver.current_point_weights);
+            Kokkos::fence();
+            std::cout << "Root mean square error: " << sqrt(solver.measure_error()) << std::endl;
 
-            // writer.add_slice(point_weight_mirror);
+            writer.add_slice(point_weight_mirror);
             Kokkos::fence();
         }
 

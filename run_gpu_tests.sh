@@ -1,11 +1,8 @@
 #!/bin/bash
-
+mkdir accuracy_tests
 ./build_gpu.sh
 
-sbatch --wait ./run_gpu.slurm.sh demoMeshes/square1.grd
-sbatch --wait ./run_gpu.slurm.sh demoMeshes/square2.grd
-sbatch --wait ./run_gpu.slurm.sh demoMeshes/square3.grd
-sbatch --wait ./run_gpu.slurm.sh demoMeshes/square4.grd
-sbatch --wait ./run_gpu.slurm.sh demoMeshes/square5.grd
-sbatch --wait ./run_gpu.slurm.sh demoMeshes/square5.grd
-sbatch --wait ./run_gpu.slurm.sh demoMeshes/square6.grd
+for i in $(seq 2 11);
+do
+    sbatch --wait --output=accuracy_tests/test_${i}.out ./run_gpu.slurm.sh demoMeshes/Results2/square${i}_b0.grd
+done
