@@ -7,6 +7,7 @@ data = pd.read_csv("benchmark_data.csv")
 data["num_points"] = data["Mesh"].map(lambda n: pow(pow(2, n-1)+1, 2))
 data["num_elements"] = data["Mesh"].map(lambda n: 2 * pow(4, n - 1))
 data["element_throughput"] = 10000 * data["num_elements"] / data["Time"]
+data = data[data["Mesh"] > 4]
 
 plt.figure()
 sns.lineplot(data=data, x="num_elements",y="Time",hue="Device", style="Algorithm")
