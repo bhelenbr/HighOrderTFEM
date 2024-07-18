@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --partition=general
-#SBATCH --time=00:05:00
+#SBATCH --time=01:20:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20

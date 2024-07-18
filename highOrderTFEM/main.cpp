@@ -3,7 +3,7 @@
 
 // When use_color is defined as true, use a coloring algorithm. Otherwise
 // rely on atomic operations for scatter-add.
-#define use_color false
+#define use_color true
 // # define use_color false
 
 #include <Kokkos_Core.hpp>
@@ -19,6 +19,7 @@ int main(int argc, char *argv[])
     {
         std::cout << "Running with default execution space: " << Kokkos::DefaultExecutionSpace::name() << std::endl;
         std::cout << "\tDefault host execution space: " << Kokkos::DefaultHostExecutionSpace::name() << std::endl;
+        std::cout << "Concurrency: " << Kokkos::DefaultExecutionSpace::concurrency() << std::endl;
 
         // Verify that we can read a mesh properly. Assume the file path is located as
         // the first arg (after program name)
@@ -75,11 +76,11 @@ int main(int argc, char *argv[])
         for (int i = 0; i < 10; i++)
         {
             solver.simulate_steps(1000);
-            Kokkos::deep_copy(point_weight_mirror, solver.current_point_weights);
-            Kokkos::fence();
-            std::cout << "Mean square error: " << solver.measure_error() << std::endl;
+            // Kokkos::deep_copy(point_weight_mirror, solver.current_point_weights);
+            // Kokkos::fence();
+            // std::cout << "Mean square error: " << solver.measure_error() << std::endl;
 
-            writer.add_slice(point_weight_mirror);
+            // writer.add_slice(point_weight_mirror);
             Kokkos::fence();
         }
 
