@@ -1,10 +1,11 @@
 #include <iostream>
 #include <iomanip>
 
-// When use_color is defined as true, use a coloring algorithm. Otherwise
-// rely on atomic operations for scatter-add.
-#define use_color true
-// # define use_color false
+#define COLOR 0
+#define ATOMIC 1
+#define SERIAL 2
+// Use this define statement to select algorithm
+#define SCATTER_ALGO COLOR
 
 #include <Kokkos_Core.hpp>
 #include <mesh.hpp>
@@ -38,7 +39,7 @@ int main(int argc, char *argv[])
         TFEM::Analytical::ZeroBoundary<> analytical(k, -1.0, 2.0, -1.0, 2.0, terms);
 
 // Depending on macros, either create a coloring-based or atomic-based solver.
-#if use_color
+#if SCATTER_ALGO == COLOR
         // Find element coloring.
         TFEM::MeshColorMap coloring(device_mesh);
 
@@ -55,10 +56,14 @@ int main(int argc, char *argv[])
         TFEM::ColoredElementScatterAdd scatter_pattern(coloring);
 
         TFEM::Solver<TFEM::ColoredElementScatterAdd> solver(device_mesh, scatter_pattern, analytical, dt, k);
-#else  // above: use_color = true. below: use_color = false
+#elif SCATTER_ALGO == ATOMIC
         TFEM::AtomicElementScatterAdd scatter_pattern(device_mesh);
 
         TFEM::Solver<TFEM::AtomicElementScatterAdd> solver(device_mesh, scatter_pattern, analytical, dt, k);
+#elif SCATTER_ALGO == SERIAL
+        TFEM::SerialElementScatterAdd scatter_pattern(device_mesh);
+
+        TFEM::Solver<TFEM::SerialElementScatterAdd> solver(device_mesh, scatter_pattern, analytical, dt, k);
 #endif // end of use_color if-else
 
         // Initialize writer

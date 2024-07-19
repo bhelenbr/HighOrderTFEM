@@ -264,6 +264,7 @@ namespace TFEM
 
     extern template class Solver<ColoredElementScatterAdd>;
     extern template class Solver<AtomicElementScatterAdd>;
+    extern template class Solver<SerialElementScatterAdd>;
 } // namespace TFEM
 
 #endif

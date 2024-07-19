@@ -212,3 +212,4 @@ KOKKOS_INLINE_FUNCTION void SolverImpl::ElementContributionFunctor<ScatterPatter
 // We need to specify what classes we might be using so the linker doesn't get mad
 template class Solver<ColoredElementScatterAdd>;
 template class Solver<AtomicElementScatterAdd>;
+template class Solver<SerialElementScatterAdd>;

@@ -60,7 +60,7 @@ namespace TFEM
      * Scatter add pattern where the contribution operation is a double-precision add and
      * work is distributed on a per-element basis, and each element only needs to write to
      * its local points/edges.
-     * 
+     *
      * Uses a coloring algorithm to ensure that elements sharing points are not running synchronously.
      */
     class ColoredElementScatterAdd
@@ -85,6 +85,36 @@ namespace TFEM
                     functor(element); });
                 Kokkos::fence();
             }
+        }
+
+        static KOKKOS_INLINE_FUNCTION void contribute(double *dest, double contribution)
+        {
+            *dest += contribution;
+        }
+    };
+
+    /**
+     * Serial execution of work. Assumes everything is on cpu memory.
+     */
+    class SerialElementScatterAdd
+    {
+    private:
+        DeviceMesh mesh;
+
+    public:
+        SerialElementScatterAdd(DeviceMesh mesh)
+        {
+            this->mesh = mesh;
+        }
+
+        template <typename WorkerFunctor>
+        void distribute_work(WorkerFunctor functor)
+        {
+            for (int i = 0; i < mesh.region_count(); i++)
+            {
+                Region element = mesh.regions(i);
+                functor(element);
+            };
         }
 
         static KOKKOS_INLINE_FUNCTION void contribute(double *dest, double contribution)
